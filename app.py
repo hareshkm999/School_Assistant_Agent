@@ -17,6 +17,7 @@ from sentence_transformers import SentenceTransformer
 
 APP_DIR = Path(__file__).parent
 DB_DIR = APP_DIR / "school_rag_db"
+LOGO_PATH = APP_DIR / "assets" / "brigade-logo.png"
 COLLECTION_NAME = "school_documents"
 EMBEDDING_MODEL = "all-MiniLM-L6-v2"
 SUPPORTED_TYPES = ["pdf", "docx", "txt", "md", "csv", "xlsx"]
@@ -180,14 +181,20 @@ def clear_library() -> None:
     st.cache_resource.clear()
 
 
-st.set_page_config(page_title="School Assistant", page_icon="🎓", layout="wide")
+st.set_page_config(page_title="Brigade School Assistant Agent", page_icon=str(LOGO_PATH), layout="wide")
 if "chat_history" not in st.session_state:
     st.session_state.chat_history = []
 
-st.title("🎓 School Assistant")
-st.caption("Private, local document search and answers. Documents stay on this computer.")
+brand, logo = st.columns([6, 1])
+with brand:
+    st.title("Brigade School Assistant Agent")
+    st.caption("Private, local document search and answers. Documents stay on this computer.")
+with logo:
+    st.image(str(LOGO_PATH), width=100)
 
 with st.sidebar:
+    st.image(str(LOGO_PATH), width=130)
+    st.subheader("Brigade School Assistant Agent")
     st.header("Document library")
     files = st.file_uploader("Add school documents", type=SUPPORTED_TYPES, accept_multiple_files=True)
     if st.button("Index uploaded documents", type="primary", disabled=not files):
