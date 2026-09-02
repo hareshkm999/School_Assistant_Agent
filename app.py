@@ -162,18 +162,55 @@ def show_puter_answer(prompt: str) -> None:
         <style>
           body {{ font-family: sans-serif; margin: 0; color: #262730; line-height: 1.5; }}
           #status {{ color: #555; }}
-          #answer {{ white-space: pre-wrap; }}
+          #answer p {{ margin: 0 0 0.75rem; }}
+          #answer ul, #answer ol {{ margin: 0 0 0.75rem; padding-left: 1.35rem; }}
+          #answer h1, #answer h2, #answer h3 {{ margin: 0.75rem 0 0.4rem; }}
         </style>
         <div id="status">Signing in to Puter and preparing an answer…</div>
         <div id="answer"></div>
         <script>
+          function escapeHtml(value) {{
+            return value.replace(/&/g, '&amp;').replace(/</g, '&lt;')
+              .replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+          }}
+
+          function renderMarkdown(value) {{
+            const inline = (text) => escapeHtml(text)
+              .replace(/\\*\\*(.+?)\\*\\*/g, '<strong>$1</strong>')
+              .replace(/`(.+?)`/g, '<code>$1</code>');
+            const lines = value.split(/\\r?\\n/);
+            const output = [];
+            let listType = null;
+            const closeList = () => {{
+              if (listType) output.push(`</${{listType}}>`);
+              listType = null;
+            }};
+            for (const line of lines) {{
+              const unordered = line.match(/^[-*]\\s+(.+)$/);
+              const ordered = line.match(/^\\d+\\.\\s+(.+)$/);
+              if (unordered || ordered) {{
+                const nextType = unordered ? 'ul' : 'ol';
+                if (listType !== nextType) {{ closeList(); output.push(`<${{nextType}}> `); listType = nextType; }}
+                output.push(`<li>${{inline((unordered || ordered)[1])}}</li>`);
+              }} else {{
+                closeList();
+                if (!line.trim()) continue;
+                const heading = line.match(/^(#{1,3})\\s+(.+)$/);
+                if (heading) output.push(`<h${{heading[1].length}}>${{inline(heading[2])}}</h${{heading[1].length}}>`);
+                else output.push(`<p>${{inline(line)}}</p>`);
+              }}
+            }}
+            closeList();
+            return output.join('');
+          }}
+
           (async () => {{
             const status = document.getElementById('status');
             const answer = document.getElementById('answer');
             try {{
               const reply = await puter.ai.chat({safe_prompt});
               status.remove();
-              answer.textContent = reply.message?.content ?? String(reply);
+              answer.innerHTML = renderMarkdown(reply.message?.content ?? String(reply));
             }} catch (error) {{
               status.textContent = 'Puter could not generate an answer. Please sign in to Puter in this browser, then ask again.';
               console.error(error);
@@ -181,7 +218,7 @@ def show_puter_answer(prompt: str) -> None:
           }})();
         </script>
         """,
-        height=280,
+        height=340,
         scrolling=True,
     )
 
