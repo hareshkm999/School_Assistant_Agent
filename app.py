@@ -28,10 +28,25 @@ def get_embedder() -> SentenceTransformer:
     return SentenceTransformer(EMBEDDING_MODEL)
 
 
-@st.cache_resource
 def get_collection():
+    """Open a current collection handle.
+
+    Do not cache this object: Streamlit Community Cloud may restart the app
+    process or reset the local disk between reruns, which invalidates a cached
+    Chroma collection ID.
+    """
     client = chromadb.PersistentClient(path=str(DB_DIR))
     return client.get_or_create_collection(name=COLLECTION_NAME, metadata={"hnsw:space": "cosine"})
+
+
+def upsert_documents(ids: list[str], documents: list[str], metadatas: list[dict], embeddings: list[list[float]]) -> None:
+    """Store passages and recover once if Cloud invalidates a collection handle."""
+    try:
+        get_collection().upsert(ids=ids, documents=documents, metadatas=metadatas, embeddings=embeddings)
+    except chromadb.errors.NotFoundError:
+        # A Cloud restart can remove the collection after it was opened. Get a
+        # new handle and retry the idempotent upsert once.
+        get_collection().upsert(ids=ids, documents=documents, metadatas=metadatas, embeddings=embeddings)
 
 
 def extract_text(uploaded_file) -> str:
@@ -82,7 +97,6 @@ def chunk_text(text: str, size: int = 850, overlap: int = 150) -> list[str]:
 
 
 def index_files(files: Iterable) -> tuple[int, list[str]]:
-    collection = get_collection()
     embedder = get_embedder()
     documents, metadatas, ids, skipped = [], [], [], []
     for file in files:
@@ -100,7 +114,7 @@ def index_files(files: Iterable) -> tuple[int, list[str]]:
             skipped.append(f"{file.name} ({exc})")
     if documents:
         embeddings = get_embedder().encode(documents, normalize_embeddings=True).tolist()
-        collection.upsert(ids=ids, documents=documents, metadatas=metadatas, embeddings=embeddings)
+        upsert_documents(ids, documents, metadatas, embeddings)
     return len(documents), skipped
 
 
@@ -178,7 +192,6 @@ def clear_library() -> None:
         client.delete_collection(COLLECTION_NAME)
     except Exception:
         pass
-    st.cache_resource.clear()
 
 
 st.set_page_config(page_title="Brigade School Assistant Agent", page_icon=str(LOGO_PATH), layout="wide")

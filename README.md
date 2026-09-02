@@ -1,4 +1,4 @@
-# School Assistant (local RAG)
+# Brigade School Assistant Agent (local RAG)
 
 A simple private assistant for school policies, circulars, schedules, curriculum documents, and spreadsheets. It runs on your computer with open-source tools:
 
@@ -33,3 +33,7 @@ The local vector library is stored in `school_rag_db/`. Use **Clear document lib
 ## Privacy notes
 
 The document library and search embeddings remain local. To generate each response, the selected source passages and your question are sent from the browser to Puter AI. Apply your school’s access-control and data-retention policies, obtain appropriate authorization, and do not upload documents from people who have not authorized their use.
+
+## Streamlit Community Cloud
+
+Community Cloud can restart an app and reset its local disk. This app reconnects to its ChromaDB collection after such a restart, but its uploaded-document library is not durable there. For a production school deployment, use authenticated durable storage and a managed vector database.
