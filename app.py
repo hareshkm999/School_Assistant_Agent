@@ -31,12 +31,30 @@ def get_embedder() -> SentenceTransformer:
 def get_collection():
     """Open a current collection handle.
 
-    Do not cache this object: Streamlit Community Cloud may restart the app
-    process or reset the local disk between reruns, which invalidates a cached
-    Chroma collection ID.
+    Use Chroma Cloud when all deployment secrets are configured. Otherwise,
+    keep local development simple by using the on-disk Chroma database.
     """
-    client = chromadb.PersistentClient(path=str(DB_DIR))
+    try:
+        client = chromadb.CloudClient(
+            api_key=st.secrets["CHROMA_API_KEY"],
+            tenant=st.secrets["CHROMA_TENANT"],
+            database=st.secrets["CHROMA_DATABASE"],
+        )
+    except Exception:
+        client = chromadb.PersistentClient(path=str(DB_DIR))
     return client.get_or_create_collection(name=COLLECTION_NAME, metadata={"hnsw:space": "cosine"})
+
+
+def get_chroma_client():
+    """Return the same local-or-cloud client used by the collection helper."""
+    try:
+        return chromadb.CloudClient(
+            api_key=st.secrets["CHROMA_API_KEY"],
+            tenant=st.secrets["CHROMA_TENANT"],
+            database=st.secrets["CHROMA_DATABASE"],
+        )
+    except Exception:
+        return chromadb.PersistentClient(path=str(DB_DIR))
 
 
 def upsert_documents(ids: list[str], documents: list[str], metadatas: list[dict], embeddings: list[list[float]]) -> None:
@@ -224,7 +242,7 @@ def show_puter_answer(prompt: str) -> None:
 
 
 def clear_library() -> None:
-    client = chromadb.PersistentClient(path=str(DB_DIR))
+    client = get_chroma_client()
     try:
         client.delete_collection(COLLECTION_NAME)
     except Exception:

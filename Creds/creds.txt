@@ -1,0 +1,13 @@
+APIKey: ck-Fdnm2EApA559keK1y59Nmxmk29wS94rv4druw3skdRJo
+
+chroma login --api-key ck-Fdnm2EApA559keK1y59Nmxmk29wS94rv4druw3skdRJo
+
+AWS us-east-1
+
+
+Databases
+AWS us-east-1
+SchoolDB
+
+Tenant ID:
+d4980718-d083-41bf-bf5c-51052589fcc7
