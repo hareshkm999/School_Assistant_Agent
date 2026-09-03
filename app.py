@@ -21,6 +21,10 @@ LOGO_PATH = APP_DIR / "assets" / "brigade-logo.png"
 COLLECTION_NAME = "school_documents"
 EMBEDDING_MODEL = "all-MiniLM-L6-v2"
 SUPPORTED_TYPES = ["pdf", "docx", "txt", "md", "csv", "xlsx"]
+INTRODUCTION_ANSWER = (
+    "I am **Sia**, an **Academic AI Assistant**, developed by **Shannavi Shree Eeshta** "
+    "from **Brigade Public School, Attapur**. I was launched on **September 3, 2026**."
+)
 
 
 @st.cache_resource(show_spinner="Loading the local search model…")
@@ -249,20 +253,20 @@ def clear_library() -> None:
         pass
 
 
-st.set_page_config(page_title="Brigade School Assistant Agent", page_icon=str(LOGO_PATH), layout="wide")
+st.set_page_config(page_title="Brigade School Intelligent Agent", page_icon=str(LOGO_PATH), layout="wide")
 if "chat_history" not in st.session_state:
     st.session_state.chat_history = []
 
 brand, logo = st.columns([6, 1])
 with brand:
-    st.title("Brigade School Assistant Agent")
+    st.title("Brigade School Intelligent Agent")
     st.caption("Private, local document search and answers. Documents stay on this computer.")
 with logo:
     st.image(str(LOGO_PATH), width=100)
 
 with st.sidebar:
     st.image(str(LOGO_PATH), width=130)
-    st.subheader("Brigade School Assistant Agent")
+    st.subheader("Brigade School Intelligent Agent")
     st.header("Document library")
     files = st.file_uploader("Add school documents", type=SUPPORTED_TYPES, accept_multiple_files=True)
     if st.button("Index uploaded documents", type="primary", disabled=not files):
@@ -290,17 +294,22 @@ for turn in st.session_state.chat_history:
 
 question = st.chat_input("Ask about policies, schedules, curriculum, notices, or other uploaded documents…")
 if question:
-    sources = retrieve(question)
+    normalized_question = question.strip().lower().rstrip("?.!")
     with st.chat_message("user"):
         st.write(question)
     with st.chat_message("assistant"):
-        if not sources:
-            st.warning("Upload and index at least one document first.")
-        else:
-            st.caption("Puter will generate the answer below. It may ask you to sign in the first time.")
-            show_puter_answer(build_answer_prompt(question, sources))
-            with st.expander("Sources used"):
-                for index, item in enumerate(sources, start=1):
-                    st.markdown(f"**[{index}] {item['source']} — passage {item['chunk']}**")
-                    st.write(item["text"])
+        if normalized_question in {"who are you", "what are you", "tell me about yourself"}:
+            st.markdown(INTRODUCTION_ANSWER)
             st.session_state.chat_history.append({"question": question})
+        else:
+            sources = retrieve(question)
+            if not sources:
+                st.warning("Upload and index at least one document first.")
+            else:
+                st.caption("Puter will generate the answer below. It may ask you to sign in the first time.")
+                show_puter_answer(build_answer_prompt(question, sources))
+                with st.expander("Sources used"):
+                    for index, item in enumerate(sources, start=1):
+                        st.markdown(f"**[{index}] {item['source']} — passage {item['chunk']}**")
+                        st.write(item["text"])
+                st.session_state.chat_history.append({"question": question})
