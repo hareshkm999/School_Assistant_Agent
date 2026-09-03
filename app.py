@@ -22,7 +22,7 @@ COLLECTION_NAME = "school_documents"
 EMBEDDING_MODEL = "all-MiniLM-L6-v2"
 SUPPORTED_TYPES = ["pdf", "docx", "txt", "md", "csv", "xlsx"]
 INTRODUCTION_ANSWER = (
-    "I am **Sia**, an **Academic AI Assistant**, developed by **Shannavi Shree Eeshta** "
+    "I am **Sia**, an **Academic AI Assistant**, developed by **Shaanavi Shree Eeshta** "
     "from **Brigade Public School, Attapur**. I was launched on **September 3, 2026**."
 )
 
