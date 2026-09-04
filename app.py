@@ -22,8 +22,11 @@ COLLECTION_NAME = "school_documents"
 EMBEDDING_MODEL = "all-MiniLM-L6-v2"
 SUPPORTED_TYPES = ["pdf", "docx", "txt", "md", "csv", "xlsx"]
 INTRODUCTION_ANSWER = (
-    "I am **Sia**, an **Academic AI Assistant**, developed by **Shaanavi Shree Eeshta** "
-    "from **Brigade Public School, Attapur**. I was launched on **September 3, 2026**."
+    "I am **Sia**, the school's **Academic AI Assistant**. I help students understand uploaded school "
+    "documents such as study material, circulars, schedules, handbooks, and notices. You can ask me "
+    "questions in simple language, and I will provide clear answers using the relevant document sources.\n\n"
+    "I was developed by **Shannavi Shree Eeshta** from **Brigade Public School, Attapur**, and launched on "
+    "**September 3, 2026**."
 )
 
 
@@ -263,7 +266,7 @@ with logo:
     st.image(str(LOGO_PATH), width=82)
 with brand:
     st.title("Meet Sia")
-    st.caption("School Intelligent Agent")
+    st.caption("School Intelligent Agent for Students and Parents")
 
 with st.sidebar:
     st.image(str(LOGO_PATH), width=130)
@@ -299,7 +302,7 @@ if question:
     with st.chat_message("user"):
         st.write(question)
     with st.chat_message("assistant"):
-        if normalized_question in {"who are you", "what are you", "tell me about yourself"}:
+        if normalized_question in {"who are you", "what are you", "tell me about yourself", "tell me about sia", "what is sia"}:
             st.markdown(INTRODUCTION_ANSWER)
             st.session_state.chat_history.append({"question": question})
         else:
