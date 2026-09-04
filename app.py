@@ -259,11 +259,26 @@ def show_puter_answer(prompt: str, response_key: str) -> None:
         f"""
         <script src="https://js.puter.com/v2/"></script>
         <style>
-          body {{ font-family: sans-serif; margin: 0; color: #262730; line-height: 1.5; }}
-          #status {{ color: #555; }}
-          #answer p {{ margin: 0 0 0.75rem; }}
-          #answer ul, #answer ol {{ margin: 0 0 0.75rem; padding-left: 1.35rem; }}
-          #answer h1, #answer h2, #answer h3 {{ margin: 0.75rem 0 0.4rem; }}
+          body {{
+            background: #ffffff;
+            border: 1px solid #dbe4f0;
+            border-radius: 12px;
+            box-sizing: border-box;
+            color: #172033;
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            margin: 0;
+            min-height: 100%;
+            padding: 16px 18px;
+          }}
+          #status {{ color: #38516f; font-weight: 600; }}
+          #answer {{ color: #172033; font-size: 1rem; }}
+          #answer p {{ color: #172033; margin: 0 0 0.8rem; }}
+          #answer strong {{ color: #0d3b78; }}
+          #answer ul, #answer ol {{ color: #172033; margin: 0 0 0.85rem; padding-left: 1.45rem; }}
+          #answer li {{ color: #172033; margin-bottom: 0.35rem; }}
+          #answer h1, #answer h2, #answer h3 {{ color: #0d3b78; margin: 0.75rem 0 0.4rem; }}
+          #answer code {{ background: #edf4ff; border-radius: 4px; color: #0d3b78; padding: 0.1rem 0.25rem; }}
         </style>
         <div id="status">Signing in to Puter and preparing an answer…</div>
         <div id="answer"></div>
@@ -325,7 +340,7 @@ def show_puter_answer(prompt: str, response_key: str) -> None:
           }})();
         </script>
         """,
-        height=340,
+        height=380,
         scrolling=True,
     )
 
@@ -364,7 +379,7 @@ with logo:
     st.image(str(LOGO_PATH), width=82)
 with brand:
     st.title("Meet Sia")
-    st.caption("School Assistant Agent, A local documents searcher. Powered by RAG and Puter.ai.")
+    st.caption("Private, local document search and answers. Documents stay on this computer.")
 
 with st.sidebar:
     st.image(str(LOGO_PATH), width=130)
