@@ -28,6 +28,18 @@ INTRODUCTION_ANSWER = (
     "I was developed by **Shannavi Shree Eeshta** from **Brigade Public School, Attapur**, and launched on "
     "**September 3, 2026**."
 )
+SIA_SYSTEM_PROMPT = """You are Sia, the Academic AI Assistant for Brigade Public School, Attapur.
+Your audience is primarily Grade 7 students, parents, and teachers. Use warm, clear, age-appropriate language.
+Answer school-information questions using only the supplied document context. Never invent names, dates, marks,
+fees, percentages, policies, or personal information. Cite supported facts with [1], [2], and so on.
+Lead with what the documents confirm. If an exact requested detail is missing, say what is confirmed and state that
+the exact detail is not stated in the provided material; suggest a useful next step such as checking the school
+office, teacher, or official result sheet. Do not use dismissive wording such as 'I can't' or 'I don't know'.
+Encourage safe, independent learning and recommend a teacher or parent for important decisions.
+For a short follow-up such as "draw a diagram", "explain it", "give examples", or "summarize it", identify the
+topic from the immediately previous conversation and keep the response on that topic. Do not replace it with an
+unrelated result from another school document. When asked to draw a diagram, provide a clear labelled ASCII/text
+diagram that a student can copy into a notebook, followed by a short explanation."""
 
 
 @st.cache_resource(show_spinner="Loading the local search model…")
@@ -155,16 +167,33 @@ def retrieve(question: str, count: int = 4) -> list[dict]:
     ]
 
 
+def is_short_follow_up(question: str) -> bool:
+    """Recognize commands that rely on the topic from the previous turn."""
+    normalized = question.strip().lower().rstrip("?.!")
+    follow_up_starts = ("draw", "can draw", "can you draw", "show", "explain it", "summarize it", "give example", "give examples", "make a")
+    return len(normalized.split()) <= 8 and normalized.startswith(follow_up_starts)
+
+
 def build_answer_prompt(question: str, sources: list[dict]) -> str:
     context = "\n\n".join(f"[{i + 1}] {item['text']}" for i, item in enumerate(sources))
-    history = st.session_state.get("chat_history", [])[-4:]
-    conversation = "\n".join(f"User: {turn['question']}" for turn in history)
-    prompt = f"""You are a careful school assistant. Answer using only the supplied school-document context.
-Give a confident, student-friendly answer. Start with the useful information the documents do confirm.
-When an exact detail is not included, do not say "I can't" or "I don't know". Instead say: "The available school documents confirm [known fact]. The exact [missing detail] is not stated in the material provided." Then offer a helpful next step, such as checking the school office or a result sheet.
-Do not invent dates, rules, marks, percentages, or personal information. Cite claims using [1], [2], etc. Keep the answer clear, positive, and concise.
+    history = st.session_state.get("chat_history", [])[-3:]
+    history_items = []
+    for turn in history:
+        item = f"Earlier user question: {turn['question']}"
+        if turn.get("answer"):
+            item += f"\nEarlier Sia response: {turn['answer']}"
+        elif turn.get("sources"):
+            excerpts = "\n".join(
+                f"- {source['source']}: {source['text'][:550]}"
+                for source in turn["sources"][:2]
+            )
+            item += f"\nRelevant extracts used for the earlier answer:\n{excerpts}"
+        history_items.append(item)
+    conversation = "\n\n".join(history_items)
+    prompt = f"""SYSTEM INSTRUCTIONS (follow these throughout your response):
+{SIA_SYSTEM_PROMPT}
 
-Previous questions in this browser session (use only when useful for follow-ups):
+Relevant earlier conversation and source extracts (use only when useful for follow-ups):
 {conversation or "None"}
 
 Context:
@@ -175,13 +204,14 @@ Answer:"""
     return prompt
 
 
-def show_puter_answer(prompt: str) -> None:
+def show_puter_answer(prompt: str, response_key: str) -> None:
     """Render a Puter.ai request in the visitor's browser.
 
     Puter handles sign-in in the browser; no API key is stored by this app.
     """
     # Prevent document text from closing the script element in the embedded frame.
     safe_prompt = json.dumps(prompt).replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026")
+    safe_key = json.dumps(f"sia-answer-{response_key}")
     components.html(
         f"""
         <script src="https://js.puter.com/v2/"></script>
@@ -234,9 +264,17 @@ def show_puter_answer(prompt: str) -> None:
             const status = document.getElementById('status');
             const answer = document.getElementById('answer');
             try {{
+              const cachedAnswer = window.localStorage.getItem({safe_key});
+              if (cachedAnswer) {{
+                status.remove();
+                answer.innerHTML = renderMarkdown(cachedAnswer);
+                return;
+              }}
               const reply = await puter.ai.chat({safe_prompt});
+              const answerText = reply.message?.content ?? String(reply);
+              window.localStorage.setItem({safe_key}, answerText);
               status.remove();
-              answer.innerHTML = renderMarkdown(reply.message?.content ?? String(reply));
+              answer.innerHTML = renderMarkdown(answerText);
             }} catch (error) {{
               status.textContent = 'Puter could not generate an answer. Please sign in to Puter in this browser, then ask again.';
               console.error(error);
@@ -257,6 +295,23 @@ def clear_library() -> None:
         pass
 
 
+def render_saved_turn(turn: dict) -> None:
+    """Render conversation state retained for this browser session."""
+    with st.chat_message("user"):
+        st.write(turn["question"])
+    with st.chat_message("assistant"):
+        if turn.get("answer"):
+            st.markdown(turn["answer"])
+        elif turn.get("puter_prompt"):
+            show_puter_answer(turn["puter_prompt"], turn["response_key"])
+        elif turn.get("sources"):
+            st.info("Sia answered this question using the saved document sources below. Ask a follow-up to continue the discussion.")
+            with st.expander("Sources used"):
+                for index, item in enumerate(turn["sources"], start=1):
+                    st.markdown(f"**[{index}] {item['source']} - passage {item['chunk']}**")
+                    st.write(item["text"])
+
+
 st.set_page_config(page_title="Brigade School Intelligent Agent", page_icon=str(LOGO_PATH), layout="wide")
 if "chat_history" not in st.session_state:
     st.session_state.chat_history = []
@@ -266,7 +321,7 @@ with logo:
     st.image(str(LOGO_PATH), width=82)
 with brand:
     st.title("Meet Sia")
-    st.caption("School Intelligent Agent for Students and Parents")
+    st.caption("Private, local document search and answers. Documents stay on this computer.")
 
 with st.sidebar:
     st.image(str(LOGO_PATH), width=130)
@@ -290,11 +345,9 @@ with st.sidebar:
     st.divider()
     st.caption("Answers are generated with Puter. You may be asked to sign in in the answer panel.")
 
-for turn in st.session_state.chat_history:
-    with st.chat_message("user"):
-        st.write(turn["question"])
-    with st.chat_message("assistant"):
-        st.caption("Previous response was generated by Puter. Ask a follow-up to continue this session.")
+# Keep the five most recent questions and answers visible in this browser session.
+for turn in st.session_state.chat_history[-5:]:
+    render_saved_turn(turn)
 
 question = st.chat_input("Ask about policies, schedules, curriculum, notices, or other uploaded documents…")
 if question:
@@ -304,16 +357,33 @@ if question:
     with st.chat_message("assistant"):
         if normalized_question in {"who are you", "what are you", "tell me about yourself", "tell me about sia", "what is sia"}:
             st.markdown(INTRODUCTION_ANSWER)
-            st.session_state.chat_history.append({"question": question})
+            st.session_state.chat_history.append({"question": question, "answer": INTRODUCTION_ANSWER})
         else:
-            sources = retrieve(question)
+            previous_turn = st.session_state.chat_history[-1] if st.session_state.chat_history else {}
+            if is_short_follow_up(question) and previous_turn.get("sources"):
+                # Short requests like "draw a diagram" should stay on the
+                # prior lesson instead of retrieving an unrelated document.
+                sources = previous_turn["sources"]
+            else:
+                sources = retrieve(question)
             if not sources:
-                st.warning("Upload and index at least one document first.")
+                answer = "Please upload and index an approved school document first, then I can help you find the answer."
+                st.warning(answer)
+                st.session_state.chat_history.append({"question": question, "answer": answer})
             else:
                 st.caption("Puter will generate the answer below. It may ask you to sign in the first time.")
-                show_puter_answer(build_answer_prompt(question, sources))
+                puter_prompt = build_answer_prompt(question, sources)
+                response_key = hashlib.sha256(f"{len(st.session_state.chat_history)}:{puter_prompt}".encode()).hexdigest()[:20]
+                show_puter_answer(puter_prompt, response_key)
                 with st.expander("Sources used"):
                     for index, item in enumerate(sources, start=1):
                         st.markdown(f"**[{index}] {item['source']} — passage {item['chunk']}**")
                         st.write(item["text"])
-                st.session_state.chat_history.append({"question": question})
+                st.session_state.chat_history.append(
+                    {
+                        "question": question,
+                        "sources": sources,
+                        "puter_prompt": puter_prompt,
+                        "response_key": response_key,
+                    }
+                )
