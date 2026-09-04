@@ -1,4 +1,4 @@
-# Brigade School Assistant Agent (local RAG)
+# Brigade School Intelligent Agent (local RAG)
 
 A simple private assistant for school policies, circulars, schedules, curriculum documents, and spreadsheets. It runs on your computer with open-source tools:
 
@@ -26,7 +26,11 @@ A simple private assistant for school policies, circulars, schedules, curriculum
 
 ## Use
 
-Upload PDF, DOCX, TXT, Markdown, CSV, or XLSX files from the sidebar, select **Index uploaded documents**, then ask a question. Every response exposes the source passages used so staff can check it.
+Upload PDF, DOCX, TXT, Markdown, CSV, XLSX, PNG, or JPG files from the sidebar, select **Index uploaded documents**, then ask a question. Every response exposes the source passages used so staff can check it.
+
+Sia can OCR text in images, scanned PDFs, and images embedded in DOCX files. Install the open-source [Tesseract OCR](https://github.com/tesseract-ocr/tesseract) application on the machine or deployment environment first; then run `pip install -r requirements.txt` again. Digital PDFs that already contain selectable text do not need OCR.
+
+For Streamlit Community Cloud, `packages.txt` installs Tesseract during deployment. On Windows, install Tesseract separately and ensure the `tesseract` command is available on your system PATH.
 
 The local vector library is stored in `school_rag_db/`. Use **Clear document library** to remove it. Scanned PDFs need OCR before they can be searched; this app indexes embedded PDF text.
 

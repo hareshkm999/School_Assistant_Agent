@@ -4,14 +4,18 @@ from __future__ import annotations
 
 import hashlib
 import json
+import zipfile
+from io import BytesIO
 from pathlib import Path
 from typing import Iterable
 
 import chromadb
 import pandas as pd
+import pytesseract
 import streamlit as st
 import streamlit.components.v1 as components
 from docx import Document
+from PIL import Image
 from pypdf import PdfReader
 from sentence_transformers import SentenceTransformer
 
@@ -20,7 +24,7 @@ DB_DIR = APP_DIR / "school_rag_db"
 LOGO_PATH = APP_DIR / "assets" / "brigade-logo.png"
 COLLECTION_NAME = "school_documents"
 EMBEDDING_MODEL = "all-MiniLM-L6-v2"
-SUPPORTED_TYPES = ["pdf", "docx", "txt", "md", "csv", "xlsx"]
+SUPPORTED_TYPES = ["pdf", "docx", "txt", "md", "csv", "xlsx", "png", "jpg", "jpeg"]
 INTRODUCTION_ANSWER = (
     "I am **Sia**, the school's **Academic AI Assistant**. I help students understand uploaded school "
     "documents such as study material, circulars, schedules, handbooks, and notices. You can ask me "
@@ -86,30 +90,69 @@ def upsert_documents(ids: list[str], documents: list[str], metadatas: list[dict]
         get_collection().upsert(ids=ids, documents=documents, metadatas=metadatas, embeddings=embeddings)
 
 
+def ocr_image(image_bytes: bytes) -> str:
+    """Extract text from an image with the locally installed Tesseract engine."""
+    try:
+        image = Image.open(BytesIO(image_bytes)).convert("RGB")
+        return pytesseract.image_to_string(image).strip()
+    except pytesseract.TesseractNotFoundError as exc:
+        raise RuntimeError("Tesseract OCR is not installed. Install Tesseract, then restart Sia.") from exc
+
+
+def ocr_scanned_pdf(raw: bytes) -> str:
+    """Render a scanned PDF page-by-page and extract its visible text."""
+    try:
+        import fitz  # PyMuPDF
+
+        pdf = fitz.open(stream=raw, filetype="pdf")
+        text = []
+        for page in pdf:
+            image = page.get_pixmap(matrix=fitz.Matrix(2, 2), alpha=False)
+            text.append(ocr_image(image.tobytes("png")))
+        return "\n".join(part for part in text if part)
+    except pytesseract.TesseractNotFoundError:
+        raise
+
+
+def extract_docx_images(raw: bytes) -> str:
+    """OCR images embedded in a Word document."""
+    image_text = []
+    with zipfile.ZipFile(BytesIO(raw)) as archive:
+        for name in archive.namelist():
+            if name.startswith("word/media/"):
+                try:
+                    extracted = ocr_image(archive.read(name))
+                    if extracted:
+                        image_text.append(extracted)
+                except (OSError, ValueError):
+                    # Some Word files contain unsupported vector media; keep
+                    # indexing the document's normal text and other images.
+                    continue
+    return "\n".join(image_text)
+
+
 def extract_text(uploaded_file) -> str:
     """Extract text from one supported Streamlit uploaded file."""
     extension = uploaded_file.name.rsplit(".", 1)[-1].lower()
     raw = uploaded_file.getvalue()
 
     if extension == "pdf":
-        from io import BytesIO
-
-        return "\n".join(page.extract_text() or "" for page in PdfReader(BytesIO(raw)).pages)
+        extracted = "\n".join(page.extract_text() or "" for page in PdfReader(BytesIO(raw)).pages)
+        # Use OCR only where PDF text is absent: avoids duplicating text in digital PDFs.
+        return extracted if extracted.strip() else ocr_scanned_pdf(raw)
     if extension == "docx":
-        from io import BytesIO
-
-        return "\n".join(p.text for p in Document(BytesIO(raw)).paragraphs)
+        document_text = "\n".join(p.text for p in Document(BytesIO(raw)).paragraphs)
+        embedded_image_text = extract_docx_images(raw)
+        return "\n".join(part for part in [document_text, embedded_image_text] if part)
     if extension in {"txt", "md"}:
         return raw.decode("utf-8", errors="replace")
     if extension == "csv":
-        from io import BytesIO
-
         return pd.read_csv(BytesIO(raw)).to_csv(index=False)
     if extension == "xlsx":
-        from io import BytesIO
-
         sheets = pd.read_excel(BytesIO(raw), sheet_name=None)
         return "\n\n".join(f"Sheet: {name}\n{frame.to_csv(index=False)}" for name, frame in sheets.items())
+    if extension in {"png", "jpg", "jpeg"}:
+        return ocr_image(raw)
     raise ValueError(f"Unsupported file type: {extension}")
 
 
@@ -321,7 +364,7 @@ with logo:
     st.image(str(LOGO_PATH), width=82)
 with brand:
     st.title("Meet Sia")
-    st.caption("Private, local document search and answers. Documents stay on this computer.")
+    st.caption("School Assistant Agent, A local documents searcher. Powered by RAG and Puter.ai.")
 
 with st.sidebar:
     st.image(str(LOGO_PATH), width=130)
