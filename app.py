@@ -157,8 +157,9 @@ def build_answer_prompt(question: str, sources: list[dict]) -> str:
     history = st.session_state.get("chat_history", [])[-4:]
     conversation = "\n".join(f"User: {turn['question']}" for turn in history)
     prompt = f"""You are a careful school assistant. Answer using only the supplied school-document context.
-If the answer is not present, say that clearly. Do not invent dates, rules, marks, or personal information.
-Cite claims using [1], [2], etc. Keep the answer clear and helpful.
+Give a confident, student-friendly answer. Start with the useful information the documents do confirm.
+When an exact detail is not included, do not say "I can't" or "I don't know". Instead say: "The available school documents confirm [known fact]. The exact [missing detail] is not stated in the material provided." Then offer a helpful next step, such as checking the school office or a result sheet.
+Do not invent dates, rules, marks, percentages, or personal information. Cite claims using [1], [2], etc. Keep the answer clear, positive, and concise.
 
 Previous questions in this browser session (use only when useful for follow-ups):
 {conversation or "None"}
@@ -257,12 +258,12 @@ st.set_page_config(page_title="Brigade School Intelligent Agent", page_icon=str(
 if "chat_history" not in st.session_state:
     st.session_state.chat_history = []
 
-brand, logo = st.columns([6, 1])
+logo, brand = st.columns([1, 6], vertical_alignment="center")
+with logo:
+    st.image(str(LOGO_PATH), width=82)
 with brand:
     st.title("Meet Sia")
-    st.caption("Private, local document search and answers. Documents stay on this computer.")
-with logo:
-    st.image(str(LOGO_PATH), width=100)
+    st.caption("School Intelligent Agent")
 
 with st.sidebar:
     st.image(str(LOGO_PATH), width=130)
