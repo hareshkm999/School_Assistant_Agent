@@ -412,7 +412,7 @@ with logo:
     st.image(str(LOGO_PATH), width=82)
 with brand:
     st.title("Meet Sia")
-    st.caption("Private, local document search and answers. Documents stay on this computer.")
+    st.caption("Your School Intelligent Agent for academic documents, schedules, and notices.")
 
 with st.sidebar:
     st.image(str(LOGO_PATH), width=130)
