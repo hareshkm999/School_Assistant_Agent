@@ -271,7 +271,7 @@ def show_puter_answer(prompt: str, response_key: str) -> None:
             padding: 0 2px;
           }}
           #status {{ color: #b8c0cd; font-weight: 600; }}
-          #answer {{ color: #f7f9fc; font-size: 1rem; max-height: 540px; overflow-y: auto; padding-right: 10px; }}
+          #answer {{ color: #f7f9fc; font-size: 1rem; max-height: 250px; overflow-y: auto; padding-right: 10px; }}
           #answer p {{ color: #f7f9fc; margin: 0 0 0.8rem; }}
           #answer strong {{ color: #ffffff; }}
           #answer ul, #answer ol {{ color: #f7f9fc; margin: 0 0 0.85rem; padding-left: 1.45rem; }}
@@ -371,7 +371,7 @@ def show_puter_answer(prompt: str, response_key: str) -> None:
         # Streamlit's embedded HTML frame does not consistently honor dynamic
         # height messages in every browser. Use a comfortable fixed viewport
         # with scroll support so no answer text is hidden.
-        height=600,
+        height=200,
         scrolling=True,
     )
 
