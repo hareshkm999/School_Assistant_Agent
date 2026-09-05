@@ -262,24 +262,22 @@ def show_puter_answer(prompt: str, response_key: str) -> None:
         <script src="https://js.puter.com/v2/"></script>
         <style>
           body {{
-            background: #ffffff;
-            border: 1px solid #dbe4f0;
-            border-radius: 12px;
+            background: #0e1117;
             box-sizing: border-box;
-            color: #172033;
+            color: #f7f9fc;
             font-family: Arial, sans-serif;
             line-height: 1.6;
             margin: 0;
-            padding: 16px 18px;
+            padding: 0 2px;
           }}
-          #status {{ color: #38516f; font-weight: 600; }}
-          #answer {{ color: #172033; font-size: 1rem; max-height: 540px; overflow-y: auto; padding-right: 10px; }}
-          #answer p {{ color: #172033; margin: 0 0 0.8rem; }}
-          #answer strong {{ color: #0d3b78; }}
-          #answer ul, #answer ol {{ color: #172033; margin: 0 0 0.85rem; padding-left: 1.45rem; }}
-          #answer li {{ color: #172033; margin-bottom: 0.35rem; }}
-          #answer h1, #answer h2, #answer h3 {{ color: #0d3b78; margin: 0.75rem 0 0.4rem; }}
-          #answer code {{ background: #edf4ff; border-radius: 4px; color: #0d3b78; padding: 0.1rem 0.25rem; }}
+          #status {{ color: #b8c0cd; font-weight: 600; }}
+          #answer {{ color: #f7f9fc; font-size: 1rem; max-height: 540px; overflow-y: auto; padding-right: 10px; }}
+          #answer p {{ color: #f7f9fc; margin: 0 0 0.8rem; }}
+          #answer strong {{ color: #ffffff; }}
+          #answer ul, #answer ol {{ color: #f7f9fc; margin: 0 0 0.85rem; padding-left: 1.45rem; }}
+          #answer li {{ color: #f7f9fc; margin-bottom: 0.35rem; }}
+          #answer h1, #answer h2, #answer h3 {{ color: #ffffff; margin: 0.75rem 0 0.4rem; }}
+          #answer code {{ background: #1d2430; border-radius: 4px; color: #ffffff; padding: 0.1rem 0.25rem; }}
         </style>
         <div id="status">Signing in to Puter and preparing an answer…</div>
         <div id="answer"></div>
@@ -412,7 +410,7 @@ with logo:
     st.image(str(LOGO_PATH), width=82)
 with brand:
     st.title("Meet Sia")
-    st.caption("Your School Intelligent Agent for academic documents, schedules, and notices.")
+    st.caption("Private, local document search and answers. Documents stay on this computer.")
 
 with st.sidebar:
     st.image(str(LOGO_PATH), width=130)
@@ -446,7 +444,10 @@ if question:
     with st.chat_message("user"):
         st.write(question)
     with st.chat_message("assistant"):
-        if normalized_question in {"who are you", "what are you", "tell me about yourself", "tell me about sia", "what is sia"}:
+        if normalized_question in {
+            "who are you", "what are you", "tell me about yourself", "tell me about sia", "what is sia",
+            "who created you", "who made you", "who developed you", "who is your creator", "who built you",
+        }:
             st.markdown(INTRODUCTION_ANSWER)
             st.session_state.chat_history.append({"question": question, "answer": INTRODUCTION_ANSWER})
         else:
