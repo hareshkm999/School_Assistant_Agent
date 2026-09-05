@@ -35,11 +35,13 @@ INTRODUCTION_ANSWER = (
 SIA_SYSTEM_PROMPT = """You are Sia, the Academic AI Assistant for Brigade Public School, Attapur.
 Your audience is primarily Grade 7 students, parents, and teachers. Use warm, clear, age-appropriate language.
 Answer school-information questions using only the supplied document context. Never invent names, dates, marks,
-fees, percentages, policies, or personal information. Cite supported facts with [1], [2], and so on.
+fees, percentages, policies, or personal information. Do not include citation markers such as [1] or [2] in the
+visible answer; users can open the separate Sources used panel to verify the information.
 Lead with what the documents confirm. If an exact requested detail is missing, say what is confirmed and state that
 the exact detail is not stated in the provided material; suggest a useful next step such as checking the school
 office, teacher, or official result sheet. Do not use dismissive wording such as 'I can't' or 'I don't know'.
-Encourage safe, independent learning and recommend a teacher or parent for important decisions.
+Encourage safe, independent learning and recommend a teacher or parent for important decisions. Use plain text
+mathematics such as "7 x 7 x 7 = 343". Do not use LaTeX commands, backslash delimiters, or markdown heading symbols.
 For a short follow-up such as "draw a diagram", "explain it", "give examples", or "summarize it", identify the
 topic from the immediately previous conversation and keep the response on that topic. Do not replace it with an
 unrelated result from another school document. When asked to draw a diagram, provide a clear labelled ASCII/text
@@ -268,11 +270,10 @@ def show_puter_answer(prompt: str, response_key: str) -> None:
             font-family: Arial, sans-serif;
             line-height: 1.6;
             margin: 0;
-            min-height: 100%;
             padding: 16px 18px;
           }}
           #status {{ color: #38516f; font-weight: 600; }}
-          #answer {{ color: #172033; font-size: 1rem; }}
+          #answer {{ color: #172033; font-size: 1rem; max-height: 540px; overflow-y: auto; padding-right: 10px; }}
           #answer p {{ color: #172033; margin: 0 0 0.8rem; }}
           #answer strong {{ color: #0d3b78; }}
           #answer ul, #answer ol {{ color: #172033; margin: 0 0 0.85rem; padding-left: 1.45rem; }}
@@ -283,16 +284,42 @@ def show_puter_answer(prompt: str, response_key: str) -> None:
         <div id="status">Signing in to Puter and preparing an answer…</div>
         <div id="answer"></div>
         <script>
+          const MIN_FRAME_HEIGHT = 120;
+          const MAX_FRAME_HEIGHT = 540;
+
+          function resizeFrame() {{
+            const status = document.getElementById('status');
+            const answer = document.getElementById('answer');
+            const contentHeight = (status ? status.scrollHeight : 0) + answer.scrollHeight + 42;
+            const height = Math.min(MAX_FRAME_HEIGHT, Math.max(MIN_FRAME_HEIGHT, contentHeight));
+            const message = {{
+              isStreamlitMessage: true,
+              type: 'streamlit:setFrameHeight',
+              height: height,
+            }};
+            window.parent.postMessage(message, '*');
+            if (window.top !== window.parent) window.top.postMessage(message, '*');
+          }}
+
+          new ResizeObserver(resizeFrame).observe(document.getElementById('answer'));
+
           function escapeHtml(value) {{
             return value.replace(/&/g, '&amp;').replace(/</g, '&lt;')
               .replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
           }}
 
           function renderMarkdown(value) {{
+            const slash = String.fromCharCode(92);
+            const cleanText = value
+              .replace(/[[][0-9, ]+[]]/g, '')
+              .split(slash + '[').join('').split(slash + ']').join('')
+              .split(slash + '(').join('').split(slash + ')').join('')
+              .split(slash + 'times').join('×').split(slash + 'cdot').join('·');
             const inline = (text) => escapeHtml(text)
               .replace(/\\*\\*(.+?)\\*\\*/g, '<strong>$1</strong>')
+              .replace(/\\*(.+?)\\*/g, '$1')
               .replace(/`(.+?)`/g, '<code>$1</code>');
-            const lines = value.split(/\\r?\\n/);
+            const lines = cleanText.split(/\\r?\\n/);
             const output = [];
             let listType = null;
             const closeList = () => {{
@@ -326,6 +353,7 @@ def show_puter_answer(prompt: str, response_key: str) -> None:
               if (cachedAnswer) {{
                 status.remove();
                 answer.innerHTML = renderMarkdown(cachedAnswer);
+                resizeFrame();
                 return;
               }}
               const reply = await puter.ai.chat({safe_prompt});
@@ -333,14 +361,19 @@ def show_puter_answer(prompt: str, response_key: str) -> None:
               window.localStorage.setItem({safe_key}, answerText);
               status.remove();
               answer.innerHTML = renderMarkdown(answerText);
+              resizeFrame();
             }} catch (error) {{
               status.textContent = 'Puter could not generate an answer. Please sign in to Puter in this browser, then ask again.';
+              resizeFrame();
               console.error(error);
             }}
           }})();
         </script>
         """,
-        height=380,
+        # Streamlit's embedded HTML frame does not consistently honor dynamic
+        # height messages in every browser. Use a comfortable fixed viewport
+        # with scroll support so no answer text is hidden.
+        height=600,
         scrolling=True,
     )
 
@@ -379,7 +412,7 @@ with logo:
     st.image(str(LOGO_PATH), width=82)
 with brand:
     st.title("Meet Sia")
-    st.caption("School Intelligent Agent. A local document searcher and AI assistant for students, parents, and teachers.")
+    st.caption("Private, local document search and answers. Documents stay on this computer.")
 
 with st.sidebar:
     st.image(str(LOGO_PATH), width=130)
