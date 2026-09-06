@@ -779,7 +779,7 @@ with logo:
     st.image(str(LOGO_PATH), width=82)
 with brand:
     st.title("Meet Sia")
-    st.caption("A School Assistant for Teachers and Students")
+    st.caption("School Intelligent Agent and an AI assistant for Teachers and Students")
 
 with st.sidebar:
     st.image(str(LOGO_PATH), width=130)
