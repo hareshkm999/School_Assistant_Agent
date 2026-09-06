@@ -1,0 +1,11 @@
+# Private local data stores: never commit school documents or student marks.
+school_rag_db/
+school_marks.db
+school_marks.db-*
+
+# Local and deployment credentials.
+.streamlit/secrets.toml
+
+# Python-generated files.
+__pycache__/
+*.py[cod]
