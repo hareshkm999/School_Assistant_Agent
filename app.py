@@ -646,7 +646,7 @@ def show_puter_answer(prompt: str, response_key: str) -> None:
           #answer h1, #answer h2, #answer h3 {{ color: #ffffff; margin: 0.75rem 0 0.4rem; }}
           #answer code {{ background: #1d2430; border-radius: 4px; color: #ffffff; padding: 0.1rem 0.25rem; }}
         </style>
-        <div id="status">Signing in to Puter and preparing an answer…</div>
+        <div id="status">Sia is connecting and preparing your answer…</div>
         <div id="answer"></div>
         <script>
           const MIN_FRAME_HEIGHT = 120;
@@ -728,7 +728,7 @@ def show_puter_answer(prompt: str, response_key: str) -> None:
               answer.innerHTML = renderMarkdown(answerText);
               resizeFrame();
             }} catch (error) {{
-              status.textContent = 'Puter could not generate an answer. Please sign in to Puter in this browser, then ask again.';
+              status.textContent = 'Sia needs a quick sign-in in this browser before answering. Please sign in, then ask again.';
               resizeFrame();
               console.error(error);
             }}
@@ -779,7 +779,7 @@ with logo:
     st.image(str(LOGO_PATH), width=82)
 with brand:
     st.title("Meet Sia")
-    st.caption("Private, local document search and answers. Documents stay on this computer.")
+    st.caption("A School Assistant for Teachers and Students")
 
 with st.sidebar:
     st.image(str(LOGO_PATH), width=130)
@@ -844,7 +844,7 @@ with st.sidebar:
     with closing(get_marks_connection()) as marks_connection:
         saved_marks_count = marks_connection.execute("SELECT COUNT(*) FROM marks").fetchone()[0]
     st.metric("Saved marks records", saved_marks_count)
-    st.caption("Answers are generated with Puter. You may be asked to sign in in the answer panel.")
+    st.caption("Sia may ask you to sign in in the answer panel before generating an answer.")
 
 # Keep the five most recent questions and answers visible in this browser session.
 for turn in st.session_state.chat_history[-5:]:
@@ -880,7 +880,7 @@ if question:
         insight_message, insight_prompt = marks_insight_puter_prompt(question) if not attachment_prompt else (None, None)
         analytics_answer = marks_question_answer(question) if not insight_prompt else None
         if attachment_prompt:
-            st.caption("Sia is reading the attached file. Its extracted text is sent to Puter only for this response.")
+            st.caption("Sia is reading the attached file and preparing a summary…")
             response_key = hashlib.sha256(
                 f"attachment:{len(st.session_state.chat_history)}:{attachment_prompt}".encode()
             ).hexdigest()[:20]
@@ -907,7 +907,7 @@ if question:
             st.markdown(insight_message)
             st.session_state.chat_history.append({"question": question, "answer": insight_message})
         elif insight_prompt:
-            st.caption("Sia calculated the class summary locally. Puter will write a clear, supportive explanation below.")
+            st.caption("Sia calculated the class summary locally and is preparing a clear explanation…")
             response_key = hashlib.sha256(
                 f"marks-insight:{len(st.session_state.chat_history)}:{insight_prompt}".encode()
             ).hexdigest()[:20]
@@ -941,7 +941,7 @@ if question:
                 st.warning(answer)
                 st.session_state.chat_history.append({"question": question, "answer": answer})
             else:
-                st.caption("Puter will generate the answer below. It may ask you to sign in the first time.")
+                st.caption("Sia is preparing the answer below. A one-time sign-in may be needed.")
                 puter_prompt = build_answer_prompt(question, sources)
                 response_key = hashlib.sha256(f"{len(st.session_state.chat_history)}:{puter_prompt}".encode()).hexdigest()[:20]
                 show_puter_answer(puter_prompt, response_key)
