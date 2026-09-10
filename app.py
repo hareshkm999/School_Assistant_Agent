@@ -771,20 +771,53 @@ def render_saved_turn(turn: dict) -> None:
 
 
 st.set_page_config(page_title="Brigade School Intelligent Agent", page_icon=str(LOGO_PATH), layout="wide")
-st.markdown(
+st.html(
     """
     <style>
-        /* Hide only the edit pencil and GitHub link in Streamlit's toolbar. */
-        div[data-testid="stToolbar"] [aria-label*="edit" i],
-        div[data-testid="stToolbar"] [title*="edit" i],
-        div[data-testid="stToolbar"] [aria-label*="github" i],
-        div[data-testid="stToolbar"] [title*="github" i],
-        div[data-testid="stToolbar"] a[href*="github.com" i] {
+        .stToolbarHiddenAction {
             display: none;
         }
     </style>
+    <script>
+        (() => {
+            const hideToolbarActions = () => {
+                const toolbar = document.querySelector('[data-testid="stToolbar"]');
+                if (!toolbar) return;
+
+                const actions = [...toolbar.querySelectorAll('button, a, [role="button"]')]
+                    .filter((element) => element.offsetParent !== null)
+                    .filter((element) => !element.parentElement.closest('button, a, [role="button"]'));
+                const actionMarkup = (element) => (
+                    `${element.getAttribute('aria-label') || ''} ` +
+                    `${element.getAttribute('title') || ''} ` +
+                    `${element.getAttribute('href') || ''} ` +
+                    `${element.textContent || ''} ` +
+                    `${element.innerHTML || ''}`
+                ).toLowerCase();
+
+                const namedMatches = actions.filter((element) => {
+                    const markup = actionMarkup(element);
+                    return markup.includes('github') || markup.includes('edit') || markup.includes('pencil');
+                });
+                namedMatches.forEach((element) => element.classList.add('stToolbarHiddenAction'));
+
+                // Older Streamlit builds omit labels. The toolbar order is
+                // Share, star, edit, GitHub, and more actions.
+                if (!namedMatches.length && actions.length >= 5) {
+                    actions[2].classList.add('stToolbarHiddenAction');
+                    actions[3].classList.add('stToolbarHiddenAction');
+                }
+            };
+
+            new MutationObserver(hideToolbarActions).observe(document.body, {
+                childList: true,
+                subtree: true,
+            });
+            hideToolbarActions();
+        })();
+    </script>
     """,
-    unsafe_allow_html=True,
+    unsafe_allow_javascript=True,
 )
 if "chat_history" not in st.session_state:
     st.session_state.chat_history = []
