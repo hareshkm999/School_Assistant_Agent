@@ -771,6 +771,19 @@ def render_saved_turn(turn: dict) -> None:
 
 
 st.set_page_config(page_title="Brigade School Intelligent Agent", page_icon=str(LOGO_PATH), layout="wide")
+st.markdown(
+    """
+    <style>
+        /* Hide only the edit pencil and GitHub link in Streamlit's toolbar. */
+        div[data-testid="stToolbar"] button[aria-label*="Edit"],
+        div[data-testid="stToolbar"] button[title*="Edit"],
+        div[data-testid="stToolbar"] a[href*="github.com"] {
+            display: none;
+        }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
 if "chat_history" not in st.session_state:
     st.session_state.chat_history = []
 
