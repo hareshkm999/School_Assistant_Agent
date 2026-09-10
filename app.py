@@ -775,9 +775,11 @@ st.markdown(
     """
     <style>
         /* Hide only the edit pencil and GitHub link in Streamlit's toolbar. */
-        div[data-testid="stToolbar"] button[aria-label*="Edit"],
-        div[data-testid="stToolbar"] button[title*="Edit"],
-        div[data-testid="stToolbar"] a[href*="github.com"] {
+        div[data-testid="stToolbar"] [aria-label*="edit" i],
+        div[data-testid="stToolbar"] [title*="edit" i],
+        div[data-testid="stToolbar"] [aria-label*="github" i],
+        div[data-testid="stToolbar"] [title*="github" i],
+        div[data-testid="stToolbar"] a[href*="github.com" i] {
             display: none;
         }
     </style>
