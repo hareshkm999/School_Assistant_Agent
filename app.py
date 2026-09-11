@@ -815,6 +815,26 @@ st.html(
             });
             hideToolbarActions();
         })();
+
+        (() => {
+            let lastChatMessage = null;
+
+            const scrollToLatestAnswer = () => {
+                const messages = document.querySelectorAll('[data-testid="stChatMessage"]');
+                const latestMessage = messages[messages.length - 1];
+                if (!latestMessage || latestMessage === lastChatMessage) return;
+                lastChatMessage = latestMessage;
+                setTimeout(() => {
+                    latestMessage.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }, 150);
+            };
+
+            new MutationObserver(scrollToLatestAnswer).observe(document.body, {
+                childList: true,
+                subtree: true,
+            });
+            scrollToLatestAnswer();
+        })();
     </script>
     """,
     unsafe_allow_javascript=True,
