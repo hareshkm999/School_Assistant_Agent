@@ -376,6 +376,83 @@ def marks_question_answer(question: str) -> str | None:
     )
 
 
+def build_marks_puter_prompt(question: str) -> tuple[str | None, str | None]:
+    """Analyze matching marks locally, then send only verified results to Puter."""
+    trigger_words = (
+        "mark", "score", "percentage", "average", "highest", "lowest",
+        "top student", "pass rate", "subject-wise", "subject wise",
+    )
+    lowered = question.lower()
+    if not any(word in lowered for word in trigger_words):
+        return None, None
+
+    marks = load_marks()
+    if marks.empty:
+        return "No marks have been uploaded yet. A teacher can upload an Excel or CSV marks sheet from the Marks analytics section.", None
+
+    filtered = marks.copy()
+    class_match = re.search(r"(?:class|grade)\s*([0-9]+)\s*([a-z])?\b", lowered)
+    if class_match:
+        filtered = filtered[filtered["class"].str.lower() == class_match.group(1)]
+        if class_match.group(2):
+            filtered = filtered[filtered["section"].str.lower() == class_match.group(2)]
+    for column in ("exam", "subject", "student_name"):
+        for value in sorted(marks[column].dropna().unique(), key=lambda item: len(str(item)), reverse=True):
+            if str(value).lower() in lowered:
+                filtered = filtered[filtered[column].str.lower() == str(value).lower()]
+                break
+
+    if filtered.empty:
+        return "No uploaded marks match that class, student, subject, or exam. Please check the spelling or upload the relevant marks sheet.", None
+
+    subject_totals = (
+        filtered.groupby("subject", as_index=False)[["marks_obtained", "maximum_marks"]]
+        .sum()
+        .assign(percentage=lambda frame: frame["marks_obtained"] / frame["maximum_marks"] * 100)
+        .sort_values("subject")
+    )
+    student_totals = (
+        filtered.groupby(["student_id", "student_name"], as_index=False)[["marks_obtained", "maximum_marks"]]
+        .sum()
+        .assign(percentage=lambda frame: frame["marks_obtained"] / frame["maximum_marks"] * 100)
+        .sort_values("student_name")
+    )
+    verified_rows = "\n".join(
+        f"- {row.student_name} | {row.subject} | {row.exam}: "
+        f"{row.marks_obtained:.0f}/{row.maximum_marks:.0f}"
+        for row in filtered.itertuples(index=False)
+    )
+    verified_subjects = "\n".join(
+        f"- {row.subject}: {row.marks_obtained:.0f}/{row.maximum_marks:.0f} ({row.percentage:.2f}%)"
+        for row in subject_totals.itertuples(index=False)
+    )
+    verified_students = "\n".join(
+        f"- {row.student_name}: {row.marks_obtained:.0f}/{row.maximum_marks:.0f} ({row.percentage:.2f}%)"
+        for row in student_totals.itertuples(index=False)
+    )
+    prompt = f"""You are Sia, the Academic AI Assistant for Brigade Public School, Attapur.
+
+Answer the user's marks question using only the verified local analysis below. Do not invent, change,
+or recalculate any score. Use the exact percentages provided. Give a clear, concise answer and mention
+the exam, class, subject, or student scope when relevant. If the question asks for improvement, identify
+the lowest verified subject and give one supportive next step. Do not expose student IDs or unrelated
+records. Do not claim that this data is official; recommend checking the school result sheet for important decisions.
+
+User question: {question}
+
+Verified matching marks:
+{verified_rows}
+
+Verified subject totals:
+{verified_subjects}
+
+Verified student totals:
+{verified_students}
+
+Final answer:"""
+    return None, prompt
+
+
 def get_collection():
     """Open a current collection handle.
 
@@ -945,8 +1022,7 @@ if question:
     with st.chat_message("assistant"):
         attachments, attachment_errors = read_chat_attachments(chat_files) if chat_files else ([], [])
         attachment_prompt = build_attachment_summary_prompt(question, attachments) if attachments else None
-        insight_message, insight_prompt = marks_insight_puter_prompt(question) if not attachment_prompt else (None, None)
-        analytics_answer = marks_question_answer(question) if not insight_prompt else None
+        marks_message, marks_prompt = build_marks_puter_prompt(question) if not attachment_prompt else (None, None)
         if attachment_prompt:
             st.caption("Sia is reading the attached file and preparing a summary…")
             response_key = hashlib.sha256(
@@ -971,25 +1047,22 @@ if question:
             st.session_state.chat_history.append(
                 {"question": question, "attachments": [file.name for file in chat_files], "answer": answer}
             )
-        elif insight_message:
-            st.markdown(insight_message)
-            st.session_state.chat_history.append({"question": question, "answer": insight_message})
-        elif insight_prompt:
-            st.caption("Sia calculated the class summary locally and is preparing a clear explanation…")
+        elif marks_message:
+            st.markdown(marks_message)
+            st.session_state.chat_history.append({"question": question, "answer": marks_message})
+        elif marks_prompt:
+            st.caption("Sia is analyzing the uploaded marks locally and preparing a clear explanation…")
             response_key = hashlib.sha256(
-                f"marks-insight:{len(st.session_state.chat_history)}:{insight_prompt}".encode()
+                f"marks:{len(st.session_state.chat_history)}:{marks_prompt}".encode()
             ).hexdigest()[:20]
-            show_puter_answer(insight_prompt, response_key)
+            show_puter_answer(marks_prompt, response_key)
             st.session_state.chat_history.append(
                 {
                     "question": question,
-                    "puter_prompt": insight_prompt,
+                    "puter_prompt": marks_prompt,
                     "response_key": response_key,
                 }
             )
-        elif analytics_answer:
-            st.markdown(analytics_answer)
-            st.session_state.chat_history.append({"question": question, "answer": analytics_answer})
         elif normalized_question in {
             "who are you", "what are you", "tell me about yourself", "tell me about sia", "what is sia",
             "who created you", "who made you", "who developed you", "who is your creator", "who built you",
