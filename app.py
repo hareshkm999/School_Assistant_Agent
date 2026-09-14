@@ -137,7 +137,14 @@ def read_marks_file(uploaded_file) -> pd.DataFrame:
         for sheet_name, sheet_frame in sheets.items():
             sheet_frame = sheet_frame.copy()
             normalized_columns = [normalize_column_name(column) for column in sheet_frame.columns]
-            if "exam" not in normalized_columns:
+            sheet_exam = str(sheet_name).strip()
+            # A worksheet named SA-1 or SA-2 is its own assessment, even if
+            # an old template contains the same Exam value on both sheets.
+            is_exam_sheet = bool(re.search(r"\b(?:sa|summative|term|exam)[\s_-]*\d+\b", sheet_exam, re.IGNORECASE))
+            if is_exam_sheet and "exam" in normalized_columns:
+                exam_column = sheet_frame.columns[normalized_columns.index("exam")]
+                sheet_frame[exam_column] = sheet_exam
+            elif "exam" not in normalized_columns:
                 sheet_frame["Exam"] = str(sheet_name)
             else:
                 exam_column = sheet_frame.columns[normalized_columns.index("exam")]
@@ -157,7 +164,7 @@ def validate_marks_dataframe(dataframe: pd.DataFrame) -> tuple[pd.DataFrame, lis
         errors.append("Missing required columns: " + ", ".join(missing))
         return dataframe, errors
 
-    clean = dataframe.copy()
+    clean = dataframe.copy().dropna(how="all")
     if "academic_year" not in clean.columns:
         clean["academic_year"] = ""
     clean = clean[list(REQUIRED_MARK_COLUMNS) + ["academic_year"]].dropna(how="all")
@@ -175,7 +182,10 @@ def validate_marks_dataframe(dataframe: pd.DataFrame) -> tuple[pd.DataFrame, lis
     invalid_range = (clean["maximum_marks"] <= 0) | (clean["marks_obtained"] < 0) | (clean["marks_obtained"] > clean["maximum_marks"])
     if invalid_range.any():
         errors.append(f"{int(invalid_range.sum())} row(s) have marks outside 0 to maximum marks.")
-    duplicates = clean.duplicated(["student_id", "class", "section", "subject", "exam", "academic_year"], keep=False)
+    # SA-1 and SA-2 are independent assessments. Matching students and
+    # subjects across different exams are expected, not duplicates.
+    duplicate_keys = ["student_id", "class", "section", "subject", "exam", "academic_year"]
+    duplicates = clean.duplicated(duplicate_keys, keep=False)
     if duplicates.any():
         errors.append(f"{int(duplicates.sum())} row(s) are duplicated for the same student, subject, and exam.")
     return clean, errors
