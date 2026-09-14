@@ -842,7 +842,7 @@ st.html(
 if "chat_history" not in st.session_state:
     st.session_state.chat_history = []
 
-logo, brand = st.columns([1, 6], vertical_alignment="center")
+logo, brand = st.columns([0.7, 6], gap="small", vertical_alignment="center")
 with logo:
     st.image(str(LOGO_PATH), width=82)
 with brand:
