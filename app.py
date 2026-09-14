@@ -517,13 +517,22 @@ def get_chroma_client():
 
 
 def upsert_documents(ids: list[str], documents: list[str], metadatas: list[dict], embeddings: list[list[float]]) -> None:
-    """Store passages and recover once if Cloud invalidates a collection handle."""
-    try:
-        get_collection().upsert(ids=ids, documents=documents, metadatas=metadatas, embeddings=embeddings)
-    except chromadb.errors.NotFoundError:
-        # A Cloud restart can remove the collection after it was opened. Get a
-        # new handle and retry the idempotent upsert once.
-        get_collection().upsert(ids=ids, documents=documents, metadatas=metadatas, embeddings=embeddings)
+    """Store passages in safe batches and recover if Cloud invalidates a handle."""
+    batch_size = 500
+    for start in range(0, len(ids), batch_size):
+        end = start + batch_size
+        batch = {
+            "ids": ids[start:end],
+            "documents": documents[start:end],
+            "metadatas": metadatas[start:end],
+            "embeddings": embeddings[start:end],
+        }
+        try:
+            get_collection().upsert(**batch)
+        except chromadb.errors.NotFoundError:
+            # A Cloud restart can remove the collection after it was opened.
+            # Get a new handle and retry this idempotent batch once.
+            get_collection().upsert(**batch)
 
 
 def ocr_image(image_bytes: bytes) -> str:
