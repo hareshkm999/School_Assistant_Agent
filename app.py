@@ -207,6 +207,13 @@ def load_marks() -> pd.DataFrame:
         return pd.read_sql_query("SELECT * FROM marks", connection)
 
 
+def clear_marks() -> None:
+    """Remove every uploaded marks record while keeping the local database ready."""
+    with closing(get_marks_connection()) as connection:
+        with connection:
+            connection.execute("DELETE FROM marks")
+
+
 def marks_insight_puter_prompt(question: str) -> tuple[str | None, str | None]:
     """Build a privacy-minimised Puter prompt for class-level improvement insights."""
     lowered = question.lower()
@@ -988,6 +995,10 @@ with st.sidebar:
             st.error(f"Could not read the marks file: {exc}")
     with closing(get_marks_connection()) as marks_connection:
         saved_marks_count = marks_connection.execute("SELECT COUNT(*) FROM marks").fetchone()[0]
+    if st.button("Clear saved marks", disabled=saved_marks_count == 0):
+        clear_marks()
+        st.success("All saved marks records were cleared.")
+        st.rerun()
     st.metric("Saved marks records", saved_marks_count)
     st.caption("Sia may ask you to sign in in the answer panel before generating an answer.")
 
