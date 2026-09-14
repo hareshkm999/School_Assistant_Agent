@@ -133,7 +133,18 @@ def read_marks_file(uploaded_file) -> pd.DataFrame:
         dataframe = pd.read_csv(BytesIO(raw))
     else:
         sheets = pd.read_excel(BytesIO(raw), sheet_name=None)
-        dataframe = pd.concat(sheets.values(), ignore_index=True) if sheets else pd.DataFrame()
+        sheet_frames = []
+        for sheet_name, sheet_frame in sheets.items():
+            sheet_frame = sheet_frame.copy()
+            normalized_columns = [normalize_column_name(column) for column in sheet_frame.columns]
+            if "exam" not in normalized_columns:
+                sheet_frame["Exam"] = str(sheet_name)
+            else:
+                exam_column = sheet_frame.columns[normalized_columns.index("exam")]
+                missing_exam = sheet_frame[exam_column].isna() | sheet_frame[exam_column].astype(str).str.strip().eq("")
+                sheet_frame.loc[missing_exam, exam_column] = str(sheet_name)
+            sheet_frames.append(sheet_frame)
+        dataframe = pd.concat(sheet_frames, ignore_index=True) if sheet_frames else pd.DataFrame()
     dataframe.columns = [normalize_column_name(column) for column in dataframe.columns]
     return dataframe
 
@@ -959,7 +970,7 @@ with st.sidebar:
         "Upload marks sheet",
         type=MARKS_UPLOAD_TYPES,
         key="marks_uploader",
-        help="Use Student ID, Student Name, Class, Section, Subject, Marks Obtained, Maximum Marks, and Exam columns.",
+        help="Use one worksheet per exam (for example, SA-1 and SA-2) or include an Exam column. Worksheet names fill missing Exam values automatically.",
     )
     template = pd.DataFrame(
         [
