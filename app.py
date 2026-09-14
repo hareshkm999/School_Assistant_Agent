@@ -134,9 +134,15 @@ def read_marks_file(uploaded_file) -> pd.DataFrame:
     else:
         sheets = pd.read_excel(BytesIO(raw), sheet_name=None)
         sheet_frames = []
+        required_sheet_columns = {
+            "student_id", "student_name", "class", "section", "subject",
+            "marks_obtained", "maximum_marks",
+        }
         for sheet_name, sheet_frame in sheets.items():
             sheet_frame = sheet_frame.copy()
             normalized_columns = [normalize_column_name(column) for column in sheet_frame.columns]
+            if not required_sheet_columns.issubset(normalized_columns):
+                continue
             sheet_exam = str(sheet_name).strip()
             # A worksheet named SA-1 or SA-2 is its own assessment, even if
             # an old template contains the same Exam value on both sheets.
