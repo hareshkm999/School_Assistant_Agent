@@ -767,6 +767,11 @@ def show_puter_answer(prompt: str, response_key: str) -> None:
           #answer h1, #answer h2, #answer h3 {{ color: #ffffff; margin: 0.75rem 0 0.4rem; }}
           #answer code {{ background: #1d2430; border-radius: 4px; color: #ffffff; padding: 0.1rem 0.25rem; }}
           #answer pre {{ background: #1d2430; border-radius: 6px; color: #ffffff; font-family: Consolas, monospace; line-height: 1.35; margin: 0.75rem 0; overflow-x: auto; padding: 0.8rem; white-space: pre; }}
+          #answer .table-wrap {{ margin: 0.75rem 0; overflow-x: auto; }}
+          #answer table {{ border-collapse: collapse; min-width: 100%; }}
+          #answer th, #answer td {{ border: 1px solid #4b5563; padding: 0.45rem 0.65rem; text-align: left; white-space: nowrap; }}
+          #answer th {{ background: #273244; color: #ffffff; font-weight: 700; }}
+          #answer td {{ background: #151b26; color: #f7f9fc; }}
         </style>
         <div id="status">Sia is connecting and preparing your answer…</div>
         <div id="answer"></div>
@@ -811,9 +816,20 @@ def show_puter_answer(prompt: str, response_key: str) -> None:
             let listType = null;
             let codeBlock = false;
             let codeLines = [];
+            let tableRows = [];
             const closeList = () => {{
               if (listType) output.push(`</${{listType}}>`);
               listType = null;
+            }};
+            const isTableRow = (line) => line.trim().startsWith('|') && line.trim().endsWith('|');
+            const isTableSeparator = (line) => /^\|?\\s*:?-+:?\\s*(\\|\\s*:?-+:?\\s*)+\\|?$/.test(line.trim());
+            const renderTable = () => {{
+              if (tableRows.length < 2) return;
+              const cells = (row) => row.trim().replace(/^\\||\\|$/g, '').split('|').map((cell) => cell.trim());
+              const headers = cells(tableRows[0]);
+              const body = tableRows.slice(2).map(cells);
+              output.push(`<div class="table-wrap"><table><thead><tr>${{headers.map((cell) => `<th>${{inline(cell)}}</th>`).join('')}}</tr></thead><tbody>${{body.map((row) => `<tr>${{headers.map((_, index) => `<td>${{inline(row[index] || '')}}</td>`).join('')}}</tr>`).join('')}}</tbody></table></div>`);
+              tableRows = [];
             }};
             for (const line of lines) {{
               if (line.trim().startsWith('```')) {{
@@ -831,6 +847,14 @@ def show_puter_answer(prompt: str, response_key: str) -> None:
                 codeLines.push(line);
                 continue;
               }}
+              if (isTableRow(line)) {{
+                tableRows.push(line);
+                if (tableRows.length >= 2 && !isTableSeparator(tableRows[1])) {{
+                  tableRows = [];
+                }}
+                continue;
+              }}
+              if (tableRows.length) renderTable();
               const unordered = line.match(/^[-*]\\s+(.+)$/);
               const ordered = line.match(/^\\d+\\.\\s+(.+)$/);
               if (unordered || ordered) {{
@@ -846,6 +870,7 @@ def show_puter_answer(prompt: str, response_key: str) -> None:
               }}
             }}
             if (codeBlock) output.push(`<pre>${{escapeHtml(codeLines.join('\\n'))}}</pre>`);
+            if (tableRows.length) renderTable();
             closeList();
             return output.join('');
           }}
