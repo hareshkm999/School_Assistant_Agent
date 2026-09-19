@@ -57,6 +57,8 @@ Your audience is primarily Grade 7 students, parents, and teachers. Use warm, cl
 Answer school-information questions using only the supplied document context. Never invent names, dates, marks,
 fees, percentages, policies, or personal information. Do not include citation markers such as [1] or [2] in the
 visible answer; users can open the separate Sources used panel to verify the information.
+Use the supplied local document context first. If the context is empty or does not answer the question, clearly
+label the response as external/general information and do not present it as confirmed school information.
 Lead with what the documents confirm. If an exact requested detail is missing, say what is confirmed and state that
 the exact detail is not stated in the provided material; suggest a useful next step such as checking the school
 office, teacher, or official result sheet. Do not use dismissive wording such as 'I can't' or 'I don't know'.
@@ -786,6 +788,21 @@ Answer:"""
     return prompt
 
 
+def build_external_answer_prompt(question: str) -> str:
+    """Ask Puter for a clearly labelled fallback when local documents have no answer."""
+    return f"""You are Sia, the Academic AI Assistant for Brigade Public School, Attapur.
+
+The local school-document search did not find a relevant source for this question. Answer using your
+general or externally available knowledge only. Do not claim that any detail is an official Brigade
+Public School policy, schedule, fee, mark, or notice. Clearly begin with "External information:" and
+recommend checking the school's official website, office, or teacher when the information may change.
+Use warm, age-appropriate language. Never invent personal information or marks.
+
+User question: {question}
+
+Answer:"""
+
+
 def read_chat_attachments(files: Iterable) -> tuple[list[dict], list[str]]:
     """Extract limited, temporary text for files attached to a single chat turn."""
     attachments, errors = [], []
@@ -1270,10 +1287,21 @@ if question:
                 sources = previous_turn["sources"]
             else:
                 sources = retrieve(question)
-            if not sources:
-                answer = "Please upload and index an approved school document first, then I can help you find the answer."
-                st.warning(answer)
-                st.session_state.chat_history.append({"question": question, "answer": answer})
+            relevant_sources = sources and sources[0]["distance"] <= 0.65
+            if not relevant_sources:
+                external_prompt = build_external_answer_prompt(question)
+                st.caption("No relevant local source was found. Sia is checking external information and will label it clearly.")
+                response_key = hashlib.sha256(
+                    f"external:{len(st.session_state.chat_history)}:{external_prompt}".encode()
+                ).hexdigest()[:20]
+                show_puter_answer(external_prompt, response_key)
+                st.session_state.chat_history.append(
+                    {
+                        "question": question,
+                        "puter_prompt": external_prompt,
+                        "response_key": response_key,
+                    }
+                )
             else:
                 st.caption("Sia is preparing the answer below. A one-time sign-in may be needed.")
                 puter_prompt = build_answer_prompt(question, sources)
