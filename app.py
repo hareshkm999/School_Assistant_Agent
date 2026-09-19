@@ -59,6 +59,8 @@ fees, percentages, policies, or personal information. Do not include citation ma
 visible answer; users can open the separate Sources used panel to verify the information.
 Use the supplied local document context first. If the context is empty or does not answer the question, clearly
 label the response as external/general information and do not present it as confirmed school information.
+For requests for chapter names or a table of contents, combine all chapter titles found across the supplied
+passages before saying that information is missing. Do not rely on only one passage when the uploaded book is large.
 Lead with what the documents confirm. If an exact requested detail is missing, say what is confirmed and state that
 the exact detail is not stated in the provided material; suggest a useful next step such as checking the school
 office, teacher, or official result sheet. Do not use dismissive wording such as 'I can't' or 'I don't know'.
@@ -716,8 +718,40 @@ def retrieve(question: str, count: int = 6) -> list[dict]:
     if collection.count() == 0:
         return []
     lowered = question.lower()
+    chapter_query = any(
+        term in lowered
+        for term in ("chapter list", "chapter names", "table of contents", "contents", "chapters")
+    )
+    if chapter_query:
+        # Chapter lists and contents pages are often less semantically similar
+        # than the book introduction. Search every stored passage for them.
+        all_chunks = collection.get(include=["documents", "metadatas"])
+        chapter_candidates = []
+        for doc, meta in zip(all_chunks["documents"], all_chunks["metadatas"]):
+            document_lower = doc.lower()
+            chapter_mentions = len(re.findall(r"\bchapter\s+\d+\b", document_lower))
+            if "contents" not in document_lower and chapter_mentions == 0:
+                continue
+            score = chapter_mentions * 0.2
+            if "table of contents" in document_lower or "contents" in document_lower:
+                score += 1
+            chapter_candidates.append(
+                (
+                    score,
+                    {
+                        "text": doc,
+                        "source": meta["source"],
+                        "chunk": meta["chunk"],
+                        "distance": 0,
+                    },
+                )
+            )
+        if chapter_candidates:
+            chapter_candidates.sort(key=lambda item: item[0], reverse=True)
+            return [item[1] for item in chapter_candidates[: max(count, 10)]]
+
     retrieval_question = question
-    if any(term in lowered for term in ("chapter list", "chapter names", "table of contents", "contents", "chapters")):
+    if chapter_query:
         retrieval_question += " table of contents chapter names list of chapters chapter titles"
 
     vector = get_embedder().encode([retrieval_question], normalize_embeddings=True).tolist()
