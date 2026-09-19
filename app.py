@@ -61,10 +61,6 @@ Use the supplied local document context first. If the context is empty or does n
 label the response as external/general information and do not present it as confirmed school information.
 For requests for chapter names or a table of contents, combine all chapter titles found across the supplied
 passages before saying that information is missing. Do not rely on only one passage when the uploaded book is large.
-When the user asks for flash cards or flashcards, create 4-10 cards from the supplied context using exactly this
-format, with one card per block: [FLASHCARD] followed by a line starting with "Q:" and a line starting with "A:".
-Do not put extra explanation inside the card blocks. The answer panel will turn these blocks into cards that can
-be clicked to reveal or hide the answer.
 Lead with what the documents confirm. If an exact requested detail is missing, say what is confirmed and state that
 the exact detail is not stated in the provided material; suggest a useful next step such as checking the school
 office, teacher, or official result sheet. Do not use dismissive wording such as 'I can't' or 'I don't know'.
@@ -835,8 +831,6 @@ general or externally available knowledge only. Do not claim that any detail is 
 Public School policy, schedule, fee, mark, or notice. Clearly begin with "External information:" and
 recommend checking the school's official website, office, or teacher when the information may change.
 Use warm, age-appropriate language. Never invent personal information or marks.
-If the user asks for flash cards or flashcards, create 4-10 cards using exactly this format, with one card
-per block: [FLASHCARD] followed by a line starting with "Q:" and a line starting with "A:".
 
 User question: {question}
 
@@ -920,16 +914,6 @@ def show_puter_answer(prompt: str, response_key: str) -> None:
           #answer th, #answer td {{ border: 1px solid #4b5563; padding: 0.45rem 0.65rem; text-align: left; white-space: nowrap; }}
           #answer th {{ background: #273244; color: #ffffff; font-weight: 700; }}
           #answer td {{ background: #151b26; color: #f7f9fc; }}
-          #answer .flashcard-grid {{ display: grid; gap: 0.85rem; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); margin: 0.8rem 0; }}
-          #answer .flashcard {{ background: linear-gradient(145deg, #1b2940, #172033); border: 1px solid #526887; border-radius: 12px; cursor: pointer; min-height: 145px; perspective: 900px; position: relative; }}
-          #answer .flashcard:focus {{ outline: 2px solid #8ab4f8; outline-offset: 2px; }}
-          #answer .flashcard-inner {{ min-height: 145px; padding: 1rem; transition: transform 0.45s ease; transform-style: preserve-3d; }}
-          #answer .flashcard.flipped .flashcard-inner {{ transform: rotateY(180deg); }}
-          #answer .flashcard-face {{ align-items: center; backface-visibility: hidden; display: flex; flex-direction: column; justify-content: center; min-height: 113px; text-align: center; }}
-          #answer .flashcard-answer {{ left: 1rem; position: absolute; right: 1rem; top: 1rem; transform: rotateY(180deg); }}
-          #answer .flashcard-label {{ color: #9fc5ff; font-size: 0.72rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; }}
-          #answer .flashcard-text {{ color: #ffffff; font-size: 0.98rem; margin-top: 0.5rem; }}
-          #answer .flashcard-hint {{ color: #b8c0cd; font-size: 0.72rem; margin-top: 0.65rem; }}
         </style>
         <div id="status">Sia is connecting and preparing your answer…</div>
         <div id="answer"></div>
@@ -956,74 +940,6 @@ def show_puter_answer(prompt: str, response_key: str) -> None:
           function escapeHtml(value) {{
             return value.replace(/&/g, '&amp;').replace(/</g, '&lt;')
               .replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
-          }}
-
-          function renderFlashcards(value) {{
-            const lines = value.split(/\r?\n/);
-            const cards = [];
-            let question = null;
-            let answer = [];
-            let inCard = false;
-            const saveCard = () => {{
-              if (question && answer.join(' ').trim()) {{
-                cards.push({{ question: question.trim(), answer: answer.join(' ').trim() }});
-              }}
-              question = null;
-              answer = [];
-              inCard = false;
-            }};
-            for (const rawLine of lines) {{
-              const line = rawLine.trim();
-              if (line.toUpperCase().startsWith('[FLASHCARD]')) {{
-                saveCard();
-                inCard = true;
-                continue;
-              }}
-              if (!inCard) continue;
-              if (/^Q\s*:/i.test(line)) {{
-                question = line.replace(/^Q\s*:/i, '').trim();
-              }} else if (/^A\s*:/i.test(line)) {{
-                answer.push(line.replace(/^A\s*:/i, '').trim());
-              }} else if (question && line) {{
-                answer.push(line);
-              }}
-            }}
-            saveCard();
-            if (!cards.length) return '';
-            return `<div class="flashcard-grid">${{cards.map((card, index) => `
-              <div class="flashcard" role="button" tabindex="0" aria-label="Flashcard ${{index + 1}}. Click to show the answer." data-flashcard>
-                <div class="flashcard-inner">
-                  <div class="flashcard-face">
-                    <div class="flashcard-label">Question ${{index + 1}}</div>
-                    <div class="flashcard-text">${{escapeHtml(card.question)}}</div>
-                    <div class="flashcard-hint">Click to reveal answer</div>
-                  </div>
-                  <div class="flashcard-face flashcard-answer">
-                    <div class="flashcard-label">Answer</div>
-                    <div class="flashcard-text">${{escapeHtml(card.answer)}}</div>
-                    <div class="flashcard-hint">Click to show question</div>
-                  </div>
-                </div>
-              </div>`).join('')}}</div>`;
-          }}
-
-          function wireFlashcards() {{
-            document.querySelectorAll('[data-flashcard]').forEach((card) => {{
-              const toggle = () => {{
-                card.classList.toggle('flipped');
-                card.setAttribute('aria-label', card.classList.contains('flipped')
-                  ? 'Flashcard answer. Click to show the question.'
-                  : 'Flashcard question. Click to show the answer.');
-                resizeFrame();
-              }};
-              card.addEventListener('click', toggle);
-              card.addEventListener('keydown', (event) => {{
-                if (event.key === 'Enter' || event.key === ' ') {{
-                  event.preventDefault();
-                  toggle();
-                }}
-              }});
-            }});
           }}
 
           function renderMarkdown(value) {{
@@ -1122,9 +1038,7 @@ def show_puter_answer(prompt: str, response_key: str) -> None:
               const cachedAnswer = window.localStorage.getItem({safe_key});
               if (cachedAnswer) {{
                 status.remove();
-                const flashcards = renderFlashcards(cachedAnswer);
-                answer.innerHTML = flashcards || renderMarkdown(cachedAnswer);
-                wireFlashcards();
+                answer.innerHTML = renderMarkdown(cachedAnswer);
                 resizeFrame();
                 return;
               }}
@@ -1132,9 +1046,7 @@ def show_puter_answer(prompt: str, response_key: str) -> None:
               const answerText = reply.message?.content ?? String(reply);
               window.localStorage.setItem({safe_key}, answerText);
               status.remove();
-              const flashcards = renderFlashcards(answerText);
-              answer.innerHTML = flashcards || renderMarkdown(answerText);
-              wireFlashcards();
+              answer.innerHTML = renderMarkdown(answerText);
               resizeFrame();
             }} catch (error) {{
               status.textContent = 'Sia needs a quick sign-in in this browser before answering. Please sign in, then ask again.';
