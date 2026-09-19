@@ -130,8 +130,20 @@ def read_marks_file(uploaded_file) -> pd.DataFrame:
     """Read every worksheet in a teacher's workbook into one clean table."""
     raw = uploaded_file.getvalue()
     extension = uploaded_file.name.rsplit(".", 1)[-1].lower()
+    filename_exam_match = re.search(
+        r"\b(sa|summative|term|exam)[\s_-]*(\d+)\b",
+        uploaded_file.name,
+        re.IGNORECASE,
+    )
+    filename_exam = (
+        f"{filename_exam_match.group(1).upper()}-{filename_exam_match.group(2)}"
+        if filename_exam_match
+        else ""
+    )
     if extension == "csv":
         dataframe = pd.read_csv(BytesIO(raw))
+        if filename_exam and "exam" not in [normalize_column_name(column) for column in dataframe.columns]:
+            dataframe["Exam"] = filename_exam
     else:
         sheets = pd.read_excel(BytesIO(raw), sheet_name=None)
         sheet_frames = []
@@ -148,7 +160,14 @@ def read_marks_file(uploaded_file) -> pd.DataFrame:
             # A worksheet named SA-1 or SA-2 is its own assessment, even if
             # an old template contains the same Exam value on both sheets.
             is_exam_sheet = bool(re.search(r"\b(?:sa|summative|term|exam)[\s_-]*\d+\b", sheet_exam, re.IGNORECASE))
-            if is_exam_sheet and "exam" in normalized_columns:
+            if filename_exam and not is_exam_sheet:
+                sheet_exam = filename_exam
+                if "exam" in normalized_columns:
+                    exam_column = sheet_frame.columns[normalized_columns.index("exam")]
+                    sheet_frame[exam_column] = filename_exam
+                else:
+                    sheet_frame["Exam"] = filename_exam
+            elif is_exam_sheet and "exam" in normalized_columns:
                 exam_column = sheet_frame.columns[normalized_columns.index("exam")]
                 sheet_frame[exam_column] = sheet_exam
             elif "exam" not in normalized_columns:
@@ -1068,7 +1087,8 @@ with st.sidebar:
         "Upload marks sheet",
         type=MARKS_UPLOAD_TYPES,
         key="marks_uploader",
-        help="Use one worksheet per exam (for example, SA-1 and SA-2) or include an Exam column. Worksheet names fill missing Exam values automatically.",
+        accept_multiple_files=True,
+        help="Upload one or more workbooks. Names such as SA-1 Marks.xlsx and SA-2 Marks.xlsx identify the exam automatically. You can also use one worksheet per exam.",
     )
     template = pd.DataFrame(
         [
@@ -1092,14 +1112,23 @@ with st.sidebar:
         mime="text/csv",
         icon=":material/download:",
     )
-    if st.button("Validate and save marks", type="primary", disabled=marks_file is None):
+    if st.button("Validate and save marks", type="primary", disabled=not marks_file):
         try:
-            marks_frame, validation_errors = validate_marks_dataframe(read_marks_file(marks_file))
+            frames = []
+            validation_errors = []
+            for uploaded_marks_file in marks_file:
+                frame, file_errors = validate_marks_dataframe(read_marks_file(uploaded_marks_file))
+                if file_errors:
+                    validation_errors.extend(f"{uploaded_marks_file.name}: {error}" for error in file_errors)
+                else:
+                    frames.append(frame)
             if validation_errors:
                 st.error("Marks were not saved. " + " ".join(validation_errors))
+            elif frames:
+                saved = sum(save_marks(frame) for frame in frames)
+                st.success(f"Saved or updated {saved} marks record(s) from {len(frames)} file(s).")
             else:
-                saved = save_marks(marks_frame)
-                st.success(f"Saved or updated {saved} marks record(s).")
+                st.error("No valid marks worksheets were found in the uploaded files.")
         except Exception as exc:
             st.error(f"Could not read the marks file: {exc}")
     with closing(get_marks_connection()) as marks_connection:
