@@ -646,16 +646,44 @@ def index_files(files: Iterable) -> tuple[int, list[str]]:
     return len(documents), skipped
 
 
-def retrieve(question: str, count: int = 4) -> list[dict]:
+def retrieve(question: str, count: int = 6) -> list[dict]:
     collection = get_collection()
     if collection.count() == 0:
         return []
-    vector = get_embedder().encode([question], normalize_embeddings=True).tolist()
-    results = collection.query(query_embeddings=vector, n_results=min(count, collection.count()), include=["documents", "metadatas", "distances"])
-    return [
-        {"text": doc, "source": meta["source"], "chunk": meta["chunk"], "distance": distance}
-        for doc, meta, distance in zip(results["documents"][0], results["metadatas"][0], results["distances"][0])
-    ]
+    lowered = question.lower()
+    retrieval_question = question
+    if any(term in lowered for term in ("chapter list", "chapter names", "table of contents", "contents", "chapters")):
+        retrieval_question += " table of contents chapter names list of chapters chapter titles"
+
+    vector = get_embedder().encode([retrieval_question], normalize_embeddings=True).tolist()
+    candidate_count = min(max(count * 4, 12), collection.count())
+    results = collection.query(
+        query_embeddings=vector,
+        n_results=candidate_count,
+        include=["documents", "metadatas", "distances"],
+    )
+    query_terms = {
+        term for term in re.findall(r"[a-z0-9]{3,}", retrieval_question.lower())
+        if term not in {"the", "and", "for", "from", "with", "what", "are", "list"}
+    }
+    candidates = []
+    for doc, meta, distance in zip(
+        results["documents"][0], results["metadatas"][0], results["distances"][0]
+    ):
+        document_terms = set(re.findall(r"[a-z0-9]{3,}", doc.lower()))
+        overlap = len(query_terms & document_terms)
+        score = overlap * 0.08 - distance
+        if any(term in lowered for term in ("chapter list", "chapter names", "table of contents", "contents")):
+            if "contents" in doc.lower() or "chapter" in doc.lower():
+                score += 0.2
+        candidates.append(
+            (
+                score,
+                {"text": doc, "source": meta["source"], "chunk": meta["chunk"], "distance": distance},
+            )
+        )
+    candidates.sort(key=lambda item: item[0], reverse=True)
+    return [item[1] for item in candidates[:count]]
 
 
 def is_short_follow_up(question: str) -> bool:
