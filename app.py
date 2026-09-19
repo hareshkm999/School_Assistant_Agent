@@ -450,11 +450,19 @@ def build_marks_puter_prompt(question: str) -> tuple[str | None, str | None]:
         filtered = filtered[filtered["class"].str.lower() == class_match.group(1)]
         if class_match.group(2):
             filtered = filtered[filtered["section"].str.lower() == class_match.group(2)]
+    matching_exams = []
     for column in ("exam", "subject", "student_name"):
-        for value in sorted(marks[column].dropna().unique(), key=lambda item: len(str(item)), reverse=True):
-            if str(value).lower() in lowered:
-                filtered = filtered[filtered[column].str.lower() == str(value).lower()]
-                break
+        found_values = [
+            str(value)
+            for value in sorted(marks[column].dropna().unique(), key=lambda item: len(str(item)), reverse=True)
+            if str(value).lower() in lowered
+        ]
+        if column == "exam":
+            matching_exams = found_values
+            if matching_exams:
+                filtered = filtered[filtered[column].str.lower().isin(value.lower() for value in matching_exams)]
+        elif found_values:
+            filtered = filtered[filtered[column].str.lower() == found_values[0].lower()]
 
     if filtered.empty:
         return "No uploaded marks match that class, student, subject, or exam. Please check the spelling or upload the relevant marks sheet.", None
@@ -471,6 +479,39 @@ def build_marks_puter_prompt(question: str) -> tuple[str | None, str | None]:
         .assign(percentage=lambda frame: frame["marks_obtained"] / frame["maximum_marks"] * 100)
         .sort_values("student_name")
     )
+    comparison_summary = ""
+    is_comparison = len(matching_exams) > 1 and any(
+        term in lowered for term in ("compare", "comparison", "improvement", "decline", "difference")
+    )
+    if is_comparison:
+        comparison = (
+            filtered.groupby(["student_id", "student_name", "exam"], as_index=False)
+            [["marks_obtained", "maximum_marks"]]
+            .sum()
+        )
+        comparison["percentage"] = comparison["marks_obtained"] / comparison["maximum_marks"] * 100
+        comparison["exam"] = pd.Categorical(
+            comparison["exam"],
+            categories=matching_exams,
+            ordered=True,
+        )
+        comparison = comparison.sort_values(["student_name", "exam"])
+        comparison_rows = []
+        for student_name, group in comparison.groupby("student_name", sort=True, observed=False):
+            exam_values = {
+                str(row.exam): (row.marks_obtained, row.maximum_marks, row.percentage)
+                for row in group.itertuples(index=False)
+            }
+            details = []
+            for exam in matching_exams:
+                if exam in exam_values:
+                    obtained, maximum, percentage = exam_values[exam]
+                    details.append(f"{exam}: {obtained:.0f}/{maximum:.0f} ({percentage:.2f}%)")
+            if len(exam_values) == 2:
+                first, second = (exam_values[exam][2] for exam in matching_exams if exam in exam_values)
+                details.append(f"Change: {second - first:+.2f} percentage points")
+            comparison_rows.append(f"- {student_name} | " + " | ".join(details))
+        comparison_summary = "\n".join(comparison_rows)
     verified_rows = "\n".join(
         f"- {row.student_name} | {row.subject} | {row.exam}: "
         f"{row.marks_obtained:.0f}/{row.maximum_marks:.0f}"
@@ -493,6 +534,9 @@ the lowest verified subject and give one supportive next step. Do not expose stu
 records. Do not claim that this data is official; recommend checking the school result sheet for important decisions.
 
 User question: {question}
+
+Verified comparison analysis:
+{comparison_summary or "Not a comparison request."}
 
 Verified matching marks:
 {verified_rows}
