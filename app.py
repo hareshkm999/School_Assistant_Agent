@@ -1026,31 +1026,6 @@ def show_puter_answer(prompt: str, response_key: str) -> None:
             }});
           }}
 
-          function waitForPuter(timeoutMs = 12000) {{
-            return new Promise((resolve, reject) => {{
-              const started = Date.now();
-              const check = () => {{
-                if (window.puter && window.puter.ai && typeof window.puter.ai.chat === 'function') {{
-                  resolve(window.puter);
-                }} else if (Date.now() - started >= timeoutMs) {{
-                  reject(new Error('Puter did not finish loading'));
-                }} else {{
-                  window.setTimeout(check, 150);
-                }}
-              }};
-              check();
-            }});
-          }}
-
-          function chatWithTimeout(puter, prompt, timeoutMs = 45000) {{
-            return Promise.race([
-              puter.ai.chat(prompt),
-              new Promise((_, reject) => window.setTimeout(
-                () => reject(new Error('The answer request timed out')), timeoutMs
-              )),
-            ]);
-          }}
-
           function renderMarkdown(value) {{
             const slash = String.fromCharCode(92);
             const normalizeMath = (text) => text
@@ -1153,8 +1128,7 @@ def show_puter_answer(prompt: str, response_key: str) -> None:
                 resizeFrame();
                 return;
               }}
-              const puter = await waitForPuter();
-              const reply = await chatWithTimeout(puter, {safe_prompt});
+              const reply = await puter.ai.chat({safe_prompt});
               const answerText = reply.message?.content ?? String(reply);
               window.localStorage.setItem({safe_key}, answerText);
               status.remove();
@@ -1163,7 +1137,7 @@ def show_puter_answer(prompt: str, response_key: str) -> None:
               wireFlashcards();
               resizeFrame();
             }} catch (error) {{
-              status.textContent = 'The answer is taking too long. Please refresh the page, sign in to Puter if prompted, and ask again.';
+              status.textContent = 'Sia needs a quick sign-in in this browser before answering. Please sign in, then ask again.';
               resizeFrame();
               console.error(error);
             }}
