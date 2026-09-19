@@ -65,7 +65,8 @@ mathematics such as "7 x 7 x 7 = 343". Do not use LaTeX commands, backslash deli
 For a short follow-up such as "draw a diagram", "explain it", "give examples", or "summarize it", identify the
 topic from the immediately previous conversation and keep the response on that topic. Do not replace it with an
 unrelated result from another school document. When asked to draw a diagram, provide a clear labelled ASCII/text
-diagram that a student can copy into a notebook, followed by a short explanation."""
+diagram that a student can copy into a notebook, followed by a short explanation. Always place the diagram itself
+inside a fenced code block using triple backticks so spacing and alignment are preserved."""
 
 
 @st.cache_resource(show_spinner="Loading the local search model…")
@@ -765,6 +766,7 @@ def show_puter_answer(prompt: str, response_key: str) -> None:
           #answer li {{ color: #f7f9fc; margin-bottom: 0.35rem; }}
           #answer h1, #answer h2, #answer h3 {{ color: #ffffff; margin: 0.75rem 0 0.4rem; }}
           #answer code {{ background: #1d2430; border-radius: 4px; color: #ffffff; padding: 0.1rem 0.25rem; }}
+          #answer pre {{ background: #1d2430; border-radius: 6px; color: #ffffff; font-family: Consolas, monospace; line-height: 1.35; margin: 0.75rem 0; overflow-x: auto; padding: 0.8rem; white-space: pre; }}
         </style>
         <div id="status">Sia is connecting and preparing your answer…</div>
         <div id="answer"></div>
@@ -807,11 +809,28 @@ def show_puter_answer(prompt: str, response_key: str) -> None:
             const lines = cleanText.split(/\\r?\\n/);
             const output = [];
             let listType = null;
+            let codeBlock = false;
+            let codeLines = [];
             const closeList = () => {{
               if (listType) output.push(`</${{listType}}>`);
               listType = null;
             }};
             for (const line of lines) {{
+              if (line.trim().startsWith('```')) {{
+                if (codeBlock) {{
+                  output.push(`<pre>${{escapeHtml(codeLines.join('\\n'))}}</pre>`);
+                  codeLines = [];
+                  codeBlock = false;
+                }} else {{
+                  closeList();
+                  codeBlock = true;
+                }}
+                continue;
+              }}
+              if (codeBlock) {{
+                codeLines.push(line);
+                continue;
+              }}
               const unordered = line.match(/^[-*]\\s+(.+)$/);
               const ordered = line.match(/^\\d+\\.\\s+(.+)$/);
               if (unordered || ordered) {{
@@ -826,6 +845,7 @@ def show_puter_answer(prompt: str, response_key: str) -> None:
                 else output.push(`<p>${{inline(line)}}</p>`);
               }}
             }}
+            if (codeBlock) output.push(`<pre>${{escapeHtml(codeLines.join('\\n'))}}</pre>`);
             closeList();
             return output.join('');
           }}
