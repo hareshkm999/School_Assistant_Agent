@@ -910,16 +910,30 @@ def show_puter_answer(prompt: str, response_key: str) -> None:
 
           function renderMarkdown(value) {{
             const slash = String.fromCharCode(92);
-            const cleanText = value
+            const normalizeMath = (text) => text
+              .replace(/\\frac\s*\{{([^{{}}]*)\}}\s*\{{([^{{}}]*)\}}/g, '($1)/($2)')
+              .replace(/\\left|\\right/g, '')
+              .replace(/\\int/g, '∫')
+              .replace(/\\infty/g, '∞')
+              .replace(/\\pi/g, 'π')
+              .replace(/\\sqrt\s*\{{([^{{}}]*)\}}/g, '√($1)')
+              .replace(/\\,|\\;/g, ' ')
+              .replace(/\^\{{([^{{}}]*)\}}/g, '^($1)')
+              .replace(/_\{{([^{{}}]*)\}}/g, '_($1)');
+            const cleanText = normalizeMath(value)
               .replace(/[[][0-9, ]+[]]/g, '')
               .split(slash + '[').join('').split(slash + ']').join('')
               .split(slash + '(').join('').split(slash + ')').join('')
+              .split(slash + '#').join('#')
               .split(slash + 'times').join('×').split(slash + 'cdot').join('·');
+            const normalizedLines = cleanText.split(/\\r?\\n/).map((line) =>
+              line.replace(/^\\s*#{1,3}\\s+/, (prefix) => prefix.trim() + ' ')
+            );
             const inline = (text) => escapeHtml(text)
               .replace(/\\*\\*(.+?)\\*\\*/g, '<strong>$1</strong>')
               .replace(/\\*(.+?)\\*/g, '$1')
               .replace(/`(.+?)`/g, '<code>$1</code>');
-            const lines = cleanText.split(/\\r?\\n/);
+            const lines = normalizedLines;
             const output = [];
             let listType = null;
             let codeBlock = false;
