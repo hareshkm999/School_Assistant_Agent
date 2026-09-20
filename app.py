@@ -52,6 +52,26 @@ INTRODUCTION_ANSWER = (
     "I was developed by **Shannavi Shree Eeshta** from **Brigade Public School, Attapur**, and launched on "
     "**September 3, 2026**."
 )
+FLASHCARD_TEMPLATE = """FLASHCARD TEMPLATE
+Chapter/Topic: <chapter or topic name>
+Card 1
+Question: <short question or prompt>
+Answer: <accurate answer from the supplied material>
+Key point: <one important fact, formula, or example>
+
+Card 2
+Question: <short question or prompt>
+Answer: <accurate answer from the supplied material>
+Key point: <one important fact, formula, or example>"""
+FLASHCARD_RENDER_VERSION = "v3"
+
+
+def is_flashcard_request(question: str) -> bool:
+    """Identify requests that should use the structured flashcard format."""
+    normalized = question.lower()
+    return "flashcard" in normalized or "flash card" in normalized
+
+
 SIA_SYSTEM_PROMPT = """You are Sia, the Academic AI Assistant for Brigade Public School, Attapur.
 Your audience is primarily Grade 7 students, parents, and teachers. Use warm, clear, age-appropriate language.
 Answer school-information questions using only the supplied document context. Never invent names, dates, marks,
@@ -61,11 +81,22 @@ Use the supplied local document context first. If the context is empty or does n
 label the response as external/general information and do not present it as confirmed school information.
 For requests for chapter names or a table of contents, combine all chapter titles found across the supplied
 passages before saying that information is missing. Do not rely on only one passage when the uploaded book is large.
+For requests such as "chapter-wise flashcards", first identify chapter headings from all supplied passages,
+then create flashcards for each identifiable chapter using the matching textbook content. Do not ask the user
+to provide chapter names when the uploaded textbook contains chapter headings or numbered topic headings.
 Lead with what the documents confirm. If an exact requested detail is missing, say what is confirmed and state that
 the exact detail is not stated in the provided material; suggest a useful next step such as checking the school
 office, teacher, or official result sheet. Do not use dismissive wording such as 'I can't' or 'I don't know'.
 Encourage safe, independent learning and recommend a teacher or parent for important decisions. Use plain text
 mathematics such as "7 x 7 x 7 = 343". Do not use LaTeX commands, backslash delimiters, or markdown heading symbols.
+When the user asks for flashcards, use this exact structure for every card:
+Card <number>:
+Question: <one short question>
+Answer: <accurate answer from the supplied context>
+Key point: <one short fact, formula, example, or memory clue>
+Do not use markdown bold, bullets, tables, or extra text inside a card.
+Group cards under a clear chapter or topic name. Create 5-10 cards unless the user requests a different number.
+Do not invent an answer when the supplied context does not contain it; say "Not stated in the supplied material."
 For a short follow-up such as "draw a diagram", "explain it", "give examples", or "summarize it", identify the
 topic from the immediately previous conversation and keep the response on that topic. Do not replace it with an
 unrelated result from another school document. When asked to draw a diagram, provide a clear labelled ASCII/text
@@ -731,6 +762,10 @@ def retrieve(question: str, count: int = 6) -> list[dict]:
             "chapterwise",
         )
     )
+    chapter_query = chapter_query or (
+        any(term in lowered for term in ("flashcards", "flash cards"))
+        and any(term in lowered for term in ("chapter", "unit", "lesson"))
+    )
     if chapter_query:
         # Chapter lists and contents pages are often less semantically similar
         # than the book introduction. Search every stored passage for them.
@@ -807,6 +842,15 @@ def is_short_follow_up(question: str) -> bool:
 
 def build_answer_prompt(question: str, sources: list[dict]) -> str:
     context = "\n\n".join(f"[{i + 1}] {item['text']}" for i, item in enumerate(sources))
+    flashcard_instruction = ""
+    if is_flashcard_request(question):
+        flashcard_instruction = f"""
+
+The user requested flashcards. Follow this template and replace every placeholder with information from the
+supplied context. Keep each question, answer, and key point concise.
+
+{FLASHCARD_TEMPLATE}
+"""
     history = st.session_state.get("chat_history", [])[-3:]
     history_items = []
     for turn in history:
@@ -831,6 +875,7 @@ Context:
 {context}
 
 Question: {question}
+{flashcard_instruction}
 Answer:"""
     return prompt
 
@@ -844,6 +889,13 @@ general or externally available knowledge only. Do not claim that any detail is 
 Public School policy, schedule, fee, mark, or notice. Clearly begin with "External information:" and
 recommend checking the school's official website, office, or teacher when the information may change.
 Use warm, age-appropriate language. Never invent personal information or marks.
+If the user asks for flashcards, use this structure for each card:
+Card <number>
+Question: <one short question>
+Answer: <accurate answer>
+Key point: <one short fact, formula, example, or memory clue>
+Create 5-10 cards unless the user requests a different number.
+
 User question: {question}
 
 Answer:"""
@@ -926,6 +978,16 @@ def show_puter_answer(prompt: str, response_key: str) -> None:
           #answer th, #answer td {{ border: 1px solid #4b5563; padding: 0.45rem 0.65rem; text-align: left; white-space: nowrap; }}
           #answer th {{ background: #273244; color: #ffffff; font-weight: 700; }}
           #answer td {{ background: #151b26; color: #f7f9fc; }}
+          #answer .flashcard-grid {{ display: grid; gap: 0.85rem; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); margin: 0.8rem 0; }}
+          #answer .flashcard {{ background: linear-gradient(145deg, #1b2940, #172033); border: 1px solid #526887; border-radius: 12px; cursor: pointer; min-height: 160px; perspective: 900px; }}
+          #answer .flashcard:focus {{ outline: 2px solid #8ab4f8; outline-offset: 2px; }}
+          #answer .flashcard-inner {{ min-height: 160px; position: relative; transition: transform 0.45s ease; transform-style: preserve-3d; }}
+          #answer .flashcard.flipped .flashcard-inner {{ transform: rotateY(180deg); }}
+          #answer .flashcard-face {{ align-items: center; backface-visibility: hidden; box-sizing: border-box; display: flex; flex-direction: column; justify-content: center; min-height: 160px; padding: 1rem; text-align: center; }}
+          #answer .flashcard-answer {{ left: 0; position: absolute; top: 0; transform: rotateY(180deg); width: 100%; }}
+          #answer .flashcard-label {{ color: #9fc5ff; font-size: 0.72rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; }}
+          #answer .flashcard-text {{ color: #ffffff; font-size: 0.98rem; margin-top: 0.5rem; }}
+          #answer .flashcard-hint {{ color: #b8c0cd; font-size: 0.72rem; margin-top: 0.65rem; }}
         </style>
         <div id="status">Sia is connecting and preparing your answer…</div>
         <div id="answer"></div>
@@ -960,6 +1022,72 @@ def show_puter_answer(prompt: str, response_key: str) -> None:
           function escapeHtml(value) {{
             return value.replace(/&/g, '&amp;').replace(/</g, '&lt;')
               .replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+          }}
+
+          function renderFlashcards(value) {{
+            const lines = value.split(/\r?\n/);
+            const cards = [];
+            let current = null;
+            const saveCard = () => {{
+              if (current && current.question && current.answer) cards.push(current);
+              current = null;
+            }};
+            for (const rawLine of lines) {{
+              const line = rawLine.trim().replace(/^[-*]\s+/, '').replace(/^\*\*|\*\*$/g, '');
+              const cardHeading = line.match(/^(?:Card|Flashcard)\s*#?\s*\d+\s*:?\s*$/i);
+              if (cardHeading) {{
+                saveCard();
+                current = {{ question: '', answer: '', keyPoint: '' }};
+                continue;
+              }}
+              if (/^\d+[.)]\s*(?:Question|Q)\s*:/i.test(line)) {{
+                saveCard();
+                current = {{ question: line.replace(/^\d+[.)]\s*(?:Question|Q)\s*:/i, '').trim(), answer: '', keyPoint: '' }};
+                continue;
+              }}
+              if (!current) continue;
+              if (/^(?:Question|Q)\s*:/i.test(line)) current.question = line.replace(/^(?:Question|Q)\s*:/i, '').trim();
+              else if (/^(?:Answer|A)\s*:/i.test(line)) current.answer = line.replace(/^(?:Answer|A)\s*:/i, '').trim();
+              else if (/^(?:Key\s*point|Key\s*idea|Key\s*fact)\s*:/i.test(line)) current.keyPoint = line.replace(/^(?:Key\s*point|Key\s*idea|Key\s*fact)\s*:/i, '').trim();
+            }}
+            saveCard();
+            if (!cards.length) return '';
+            return `<div class="flashcard-grid">${{cards.map((card, index) => `
+              <div class="flashcard" role="button" tabindex="0" data-flashcard
+                   aria-label="Flashcard ${{index + 1}}. Click to show the answer.">
+                <div class="flashcard-inner">
+                  <div class="flashcard-face">
+                    <div class="flashcard-label">Question ${{index + 1}}</div>
+                    <div class="flashcard-text">${{escapeHtml(card.question)}}</div>
+                    <div class="flashcard-hint">Click to reveal answer</div>
+                  </div>
+                  <div class="flashcard-face flashcard-answer">
+                    <div class="flashcard-label">Answer</div>
+                    <div class="flashcard-text">${{escapeHtml(card.answer)}}</div>
+                    ${{card.keyPoint ? `<div class="flashcard-hint">Key point: ${{escapeHtml(card.keyPoint)}}</div>` : ''}}
+                    <div class="flashcard-hint">Click to show question</div>
+                  </div>
+                </div>
+              </div>`).join('')}}</div>`;
+          }}
+
+          function wireFlashcards() {{
+            document.querySelectorAll('[data-flashcard]').forEach((card) => {{
+              const toggle = () => {{
+                card.classList.toggle('flipped');
+                card.setAttribute('aria-label', card.classList.contains('flipped')
+                  ? 'Flashcard answer. Click to show the question.'
+                  : 'Flashcard question. Click to show the answer.');
+                resizeFrame();
+              }};
+              card.addEventListener('click', toggle);
+              card.addEventListener('keydown', (event) => {{
+                if (event.key === 'Enter' || event.key === ' ') {{
+                  event.preventDefault();
+                  toggle();
+                }}
+              }});
+            }});
           }}
 
           function waitForPuter(timeoutMs = 12000) {{
@@ -1084,7 +1212,8 @@ def show_puter_answer(prompt: str, response_key: str) -> None:
               if (cachedAnswer) {{
                 window.clearTimeout(startupWatchdog);
                 status.remove();
-                answer.innerHTML = renderMarkdown(cachedAnswer);
+                answer.innerHTML = renderFlashcards(cachedAnswer) || renderMarkdown(cachedAnswer);
+                wireFlashcards();
                 resizeFrame();
                 return;
               }}
@@ -1094,7 +1223,8 @@ def show_puter_answer(prompt: str, response_key: str) -> None:
               window.localStorage.setItem({safe_key}, answerText);
               window.clearTimeout(startupWatchdog);
               status.remove();
-              answer.innerHTML = renderMarkdown(answerText);
+              answer.innerHTML = renderFlashcards(answerText) || renderMarkdown(answerText);
+              wireFlashcards();
               resizeFrame();
             }} catch (error) {{
               window.clearTimeout(startupWatchdog);
@@ -1389,7 +1519,7 @@ if question:
                 external_prompt = build_external_answer_prompt(question)
                 st.caption("No relevant local source was found. Sia is checking external information and will label it clearly.")
                 response_key = hashlib.sha256(
-                    f"external:{len(st.session_state.chat_history)}:{external_prompt}".encode()
+                    f"{FLASHCARD_RENDER_VERSION}:external:{len(st.session_state.chat_history)}:{external_prompt}".encode()
                 ).hexdigest()[:20]
                 show_puter_answer(external_prompt, response_key)
                 st.session_state.chat_history.append(
@@ -1403,7 +1533,7 @@ if question:
                 st.caption("Sia is preparing the answer below. A one-time sign-in may be needed.")
                 puter_prompt = build_answer_prompt(question, sources)
                 response_key = hashlib.sha256(
-                    f"{len(st.session_state.chat_history)}:{puter_prompt}".encode()
+                    f"{FLASHCARD_RENDER_VERSION}:{len(st.session_state.chat_history)}:{puter_prompt}".encode()
                 ).hexdigest()[:20]
                 show_puter_answer(puter_prompt, response_key)
                 with st.expander("Sources used"):
