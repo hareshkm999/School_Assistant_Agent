@@ -52,6 +52,25 @@ INTRODUCTION_ANSWER = (
     "I was developed by **Shannavi Shree Eeshta** from **Brigade Public School, Attapur**, and launched on "
     "**September 3, 2026**."
 )
+FLASHCARD_TEMPLATE = """FLASHCARD TEMPLATE
+Chapter/Topic: <chapter or topic name>
+Card 1
+Question: <short question or prompt>
+Answer: <accurate answer from the supplied material>
+Key point: <one important fact, formula, or example>
+
+Card 2
+Question: <short question or prompt>
+Answer: <accurate answer from the supplied material>
+Key point: <one important fact, formula, or example>"""
+
+
+def is_flashcard_request(question: str) -> bool:
+    """Identify requests that should use the structured flashcard format."""
+    normalized = question.lower()
+    return "flashcard" in normalized or "flash card" in normalized
+
+
 SIA_SYSTEM_PROMPT = """You are Sia, the Academic AI Assistant for Brigade Public School, Attapur.
 Your audience is primarily Grade 7 students, parents, and teachers. Use warm, clear, age-appropriate language.
 Answer school-information questions using only the supplied document context. Never invent names, dates, marks,
@@ -69,6 +88,13 @@ the exact detail is not stated in the provided material; suggest a useful next s
 office, teacher, or official result sheet. Do not use dismissive wording such as 'I can't' or 'I don't know'.
 Encourage safe, independent learning and recommend a teacher or parent for important decisions. Use plain text
 mathematics such as "7 x 7 x 7 = 343". Do not use LaTeX commands, backslash delimiters, or markdown heading symbols.
+When the user asks for flashcards, use this exact structure for every card:
+Card <number>
+Question: <one short question>
+Answer: <accurate answer from the supplied context>
+Key point: <one short fact, formula, example, or memory clue>
+Group cards under a clear chapter or topic name. Create 5-10 cards unless the user requests a different number.
+Do not invent an answer when the supplied context does not contain it; say "Not stated in the supplied material."
 For a short follow-up such as "draw a diagram", "explain it", "give examples", or "summarize it", identify the
 topic from the immediately previous conversation and keep the response on that topic. Do not replace it with an
 unrelated result from another school document. When asked to draw a diagram, provide a clear labelled ASCII/text
@@ -814,6 +840,15 @@ def is_short_follow_up(question: str) -> bool:
 
 def build_answer_prompt(question: str, sources: list[dict]) -> str:
     context = "\n\n".join(f"[{i + 1}] {item['text']}" for i, item in enumerate(sources))
+    flashcard_instruction = ""
+    if is_flashcard_request(question):
+        flashcard_instruction = f"""
+
+The user requested flashcards. Follow this template and replace every placeholder with information from the
+supplied context. Keep each question, answer, and key point concise.
+
+{FLASHCARD_TEMPLATE}
+"""
     history = st.session_state.get("chat_history", [])[-3:]
     history_items = []
     for turn in history:
@@ -838,6 +873,7 @@ Context:
 {context}
 
 Question: {question}
+{flashcard_instruction}
 Answer:"""
     return prompt
 
@@ -851,6 +887,12 @@ general or externally available knowledge only. Do not claim that any detail is 
 Public School policy, schedule, fee, mark, or notice. Clearly begin with "External information:" and
 recommend checking the school's official website, office, or teacher when the information may change.
 Use warm, age-appropriate language. Never invent personal information or marks.
+If the user asks for flashcards, use this structure for each card:
+Card <number>
+Question: <one short question>
+Answer: <accurate answer>
+Key point: <one short fact, formula, example, or memory clue>
+Create 5-10 cards unless the user requests a different number.
 
 User question: {question}
 
