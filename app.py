@@ -1534,13 +1534,13 @@ if question:
                 st.caption("Sia is preparing the answer below. A one-time sign-in may be needed.")
                 puter_prompt = (
                     build_flashcard_prompt(question, sources)
-                    if flashcards
+                    if flashcard_request
                     else build_answer_prompt(question, sources)
                 )
                 response_key = hashlib.sha256(
                     f"{len(st.session_state.chat_history)}:{puter_prompt}".encode()
                 ).hexdigest()[:20]
-                show_puter_answer(puter_prompt, response_key, flashcards=flashcards)
+                show_puter_answer(puter_prompt, response_key, flashcards=flashcard_request)
                 with st.expander("Sources used"):
                     for index, item in enumerate(sources, start=1):
                         st.markdown(f"**[{index}] {item['source']} — passage {item['chunk']}**")
@@ -1551,6 +1551,6 @@ if question:
                         "sources": sources,
                         "puter_prompt": puter_prompt,
                         "response_key": response_key,
-                        "flashcards": flashcards,
+                        "flashcards": flashcard_request,
                     }
                 )
