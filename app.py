@@ -63,6 +63,7 @@ Card 2
 Question: <short question or prompt>
 Answer: <accurate answer from the supplied material>
 Key point: <one important fact, formula, or example>"""
+FLASHCARD_RENDER_VERSION = "v2"
 
 
 def is_flashcard_request(question: str) -> bool:
@@ -89,10 +90,11 @@ office, teacher, or official result sheet. Do not use dismissive wording such as
 Encourage safe, independent learning and recommend a teacher or parent for important decisions. Use plain text
 mathematics such as "7 x 7 x 7 = 343". Do not use LaTeX commands, backslash delimiters, or markdown heading symbols.
 When the user asks for flashcards, use this exact structure for every card:
-Card <number>
+Card <number>:
 Question: <one short question>
 Answer: <accurate answer from the supplied context>
 Key point: <one short fact, formula, example, or memory clue>
+Do not use markdown bold, bullets, tables, or extra text inside a card.
 Group cards under a clear chapter or topic name. Create 5-10 cards unless the user requests a different number.
 Do not invent an answer when the supplied context does not contain it; say "Not stated in the supplied material."
 For a short follow-up such as "draw a diagram", "explain it", "give examples", or "summarize it", identify the
@@ -1023,17 +1025,22 @@ def show_puter_answer(prompt: str, response_key: str) -> None:
               current = null;
             }};
             for (const rawLine of lines) {{
-              const line = rawLine.trim();
-              const cardHeading = line.match(/^Card\s+\d+\s*:?\s*$/i);
+              const line = rawLine.trim().replace(/^[-*]\s+/, '').replace(/^\*\*|\*\*$/g, '');
+              const cardHeading = line.match(/^(?:Card|Flashcard)\s*#?\s*\d+\s*:?\s*$/i);
               if (cardHeading) {{
                 saveCard();
                 current = {{ question: '', answer: '', keyPoint: '' }};
                 continue;
               }}
+              if (/^\d+[.)]\s*(?:Question|Q)\s*:/i.test(line)) {{
+                saveCard();
+                current = {{ question: line.replace(/^\d+[.)]\s*(?:Question|Q)\s*:/i, '').trim(), answer: '', keyPoint: '' }};
+                continue;
+              }}
               if (!current) continue;
-              if (/^Question\s*:/i.test(line)) current.question = line.replace(/^Question\s*:/i, '').trim();
-              else if (/^Answer\s*:/i.test(line)) current.answer = line.replace(/^Answer\s*:/i, '').trim();
-              else if (/^Key\s*point\s*:/i.test(line)) current.keyPoint = line.replace(/^Key\s*point\s*:/i, '').trim();
+              if (/^(?:Question|Q)\s*:/i.test(line)) current.question = line.replace(/^(?:Question|Q)\s*:/i, '').trim();
+              else if (/^(?:Answer|A)\s*:/i.test(line)) current.answer = line.replace(/^(?:Answer|A)\s*:/i, '').trim();
+              else if (/^(?:Key\s*point|Key\s*idea|Key\s*fact)\s*:/i.test(line)) current.keyPoint = line.replace(/^(?:Key\s*point|Key\s*idea|Key\s*fact)\s*:/i, '').trim();
             }}
             saveCard();
             if (!cards.length) return '';
@@ -1475,7 +1482,7 @@ if question:
                 external_prompt = build_external_answer_prompt(question)
                 st.caption("No relevant local source was found. Sia is checking external information and will label it clearly.")
                 response_key = hashlib.sha256(
-                    f"external:{len(st.session_state.chat_history)}:{external_prompt}".encode()
+                    f"{FLASHCARD_RENDER_VERSION}:external:{len(st.session_state.chat_history)}:{external_prompt}".encode()
                 ).hexdigest()[:20]
                 show_puter_answer(external_prompt, response_key)
                 st.session_state.chat_history.append(
@@ -1488,7 +1495,9 @@ if question:
             else:
                 st.caption("Sia is preparing the answer below. A one-time sign-in may be needed.")
                 puter_prompt = build_answer_prompt(question, sources)
-                response_key = hashlib.sha256(f"{len(st.session_state.chat_history)}:{puter_prompt}".encode()).hexdigest()[:20]
+                response_key = hashlib.sha256(
+                    f"{FLASHCARD_RENDER_VERSION}:{len(st.session_state.chat_history)}:{puter_prompt}".encode()
+                ).hexdigest()[:20]
                 show_puter_answer(puter_prompt, response_key)
                 with st.expander("Sources used"):
                     for index, item in enumerate(sources, start=1):
