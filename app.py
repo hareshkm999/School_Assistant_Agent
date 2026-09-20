@@ -718,6 +718,9 @@ def retrieve(question: str, count: int = 6) -> list[dict]:
     if collection.count() == 0:
         return []
     lowered = question.lower()
+    flashcard_query = "flashcard" in lowered or "flash card" in lowered
+    quoted_topics = re.findall(r"""["']([^"']{4,})["']""", question)
+    requested_topic = quoted_topics[0].strip() if quoted_topics else ""
     chapter_query = any(
         term in lowered
         for term in (
@@ -781,11 +784,16 @@ def retrieve(question: str, count: int = 6) -> list[dict]:
             return [item[1] for item in chapter_candidates[: max(count, 14)]]
 
     retrieval_question = question
+    if flashcard_query and requested_topic:
+        retrieval_question = (
+            f"{requested_topic} key concepts definitions processes examples "
+            "important facts textbook lesson"
+        )
     if chapter_query:
         retrieval_question += " table of contents chapter names list of chapters chapter titles"
 
     vector = get_embedder().encode([retrieval_question], normalize_embeddings=True).tolist()
-    candidate_count = min(max(count * 4, 12), collection.count())
+    candidate_count = min(max(count * (6 if flashcard_query else 4), 18), collection.count())
     results = collection.query(
         query_embeddings=vector,
         n_results=candidate_count,
@@ -802,6 +810,14 @@ def retrieve(question: str, count: int = 6) -> list[dict]:
         document_terms = set(re.findall(r"[a-z0-9]{3,}", doc.lower()))
         overlap = len(query_terms & document_terms)
         score = overlap * 0.08 - distance
+        if flashcard_query and requested_topic:
+            topic_terms = set(re.findall(r"[a-z0-9]{3,}", requested_topic.lower()))
+            topic_overlap = len(topic_terms & document_terms)
+            score += topic_overlap * 0.35
+            if topic_overlap == 0:
+                score -= 0.5
+            if "contents" in doc.lower() and topic_overlap < 2:
+                score -= 0.8
         if any(term in lowered for term in ("chapter list", "chapter names", "table of contents", "contents")):
             if "contents" in doc.lower() or "chapter" in doc.lower():
                 score += 0.2
@@ -829,12 +845,19 @@ def is_flashcard_request(question: str) -> bool:
 
 def build_flashcard_prompt(question: str, sources: list[dict]) -> str:
     context = "\n\n".join(f"[{i + 1}] {item['text']}" for i, item in enumerate(sources))
+    quoted_topics = re.findall(r"""["']([^"']{4,})["']""", question)
+    requested_topic = quoted_topics[0] if quoted_topics else "the requested lesson"
     return f"""You are Sia, the Academic AI Assistant for Brigade Public School, Attapur.
 
-Create a study flashcard deck using only the supplied textbook passages. Return ONLY valid JSON with this shape:
+Create a study flashcard deck specifically for the lesson or chapter "{requested_topic}" using only the supplied
+textbook passages. Return ONLY valid JSON with this shape:
 {{"cards":[{{"question":"short question","answer":"accurate answer from the passages"}}]}}
 
-Create 5 to 10 cards unless the user requests a different number. Keep each answer concise and age-appropriate.
+Create 6 to 10 cards unless the user requests a different number. Cover the chapter's key ideas, definitions,
+terms, causes or stages, examples, and important health or safety facts when present. Questions must test the
+chapter content, not the book structure. Do not ask how many chapters are in the book, what the chapter number is,
+what the textbook is called, or whether the chapter exists. Every answer must be directly supported by the supplied
+passages; if a detail is not present, do not create a card about it. Keep answers concise and age-appropriate.
 Do not use markdown, code fences, citations, or extra text outside the JSON. Never invent information.
 
 User request: {question}
@@ -1485,7 +1508,7 @@ if question:
                 # prior lesson instead of retrieving an unrelated document.
                 sources = previous_turn["sources"]
             else:
-                sources = retrieve(question)
+                sources = retrieve(question, count=12 if is_flashcard_request(question) else 6)
             relevant_sources = sources and sources[0]["distance"] <= 0.65
             if not relevant_sources:
                 external_prompt = build_external_answer_prompt(question)
