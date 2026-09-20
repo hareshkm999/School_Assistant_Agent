@@ -976,6 +976,16 @@ def show_puter_answer(prompt: str, response_key: str) -> None:
           #answer th, #answer td {{ border: 1px solid #4b5563; padding: 0.45rem 0.65rem; text-align: left; white-space: nowrap; }}
           #answer th {{ background: #273244; color: #ffffff; font-weight: 700; }}
           #answer td {{ background: #151b26; color: #f7f9fc; }}
+          #answer .flashcard-grid {{ display: grid; gap: 0.85rem; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); margin: 0.8rem 0; }}
+          #answer .flashcard {{ background: linear-gradient(145deg, #1b2940, #172033); border: 1px solid #526887; border-radius: 12px; cursor: pointer; min-height: 160px; perspective: 900px; }}
+          #answer .flashcard:focus {{ outline: 2px solid #8ab4f8; outline-offset: 2px; }}
+          #answer .flashcard-inner {{ min-height: 160px; position: relative; transition: transform 0.45s ease; transform-style: preserve-3d; }}
+          #answer .flashcard.flipped .flashcard-inner {{ transform: rotateY(180deg); }}
+          #answer .flashcard-face {{ align-items: center; backface-visibility: hidden; box-sizing: border-box; display: flex; flex-direction: column; justify-content: center; min-height: 160px; padding: 1rem; text-align: center; }}
+          #answer .flashcard-answer {{ left: 0; position: absolute; top: 0; transform: rotateY(180deg); width: 100%; }}
+          #answer .flashcard-label {{ color: #9fc5ff; font-size: 0.72rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; }}
+          #answer .flashcard-text {{ color: #ffffff; font-size: 0.98rem; margin-top: 0.5rem; }}
+          #answer .flashcard-hint {{ color: #b8c0cd; font-size: 0.72rem; margin-top: 0.65rem; }}
         </style>
         <div id="status">Sia is connecting and preparing your answer…</div>
         <div id="answer"></div>
@@ -1002,6 +1012,67 @@ def show_puter_answer(prompt: str, response_key: str) -> None:
           function escapeHtml(value) {{
             return value.replace(/&/g, '&amp;').replace(/</g, '&lt;')
               .replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+          }}
+
+          function renderFlashcards(value) {{
+            const lines = value.split(/\r?\n/);
+            const cards = [];
+            let current = null;
+            const saveCard = () => {{
+              if (current && current.question && current.answer) cards.push(current);
+              current = null;
+            }};
+            for (const rawLine of lines) {{
+              const line = rawLine.trim();
+              const cardHeading = line.match(/^Card\s+\d+\s*:?\s*$/i);
+              if (cardHeading) {{
+                saveCard();
+                current = {{ question: '', answer: '', keyPoint: '' }};
+                continue;
+              }}
+              if (!current) continue;
+              if (/^Question\s*:/i.test(line)) current.question = line.replace(/^Question\s*:/i, '').trim();
+              else if (/^Answer\s*:/i.test(line)) current.answer = line.replace(/^Answer\s*:/i, '').trim();
+              else if (/^Key\s*point\s*:/i.test(line)) current.keyPoint = line.replace(/^Key\s*point\s*:/i, '').trim();
+            }}
+            saveCard();
+            if (!cards.length) return '';
+            return `<div class="flashcard-grid">${{cards.map((card, index) => `
+              <div class="flashcard" role="button" tabindex="0" data-flashcard
+                   aria-label="Flashcard ${{index + 1}}. Click to show the answer.">
+                <div class="flashcard-inner">
+                  <div class="flashcard-face">
+                    <div class="flashcard-label">Question ${{index + 1}}</div>
+                    <div class="flashcard-text">${{escapeHtml(card.question)}}</div>
+                    <div class="flashcard-hint">Click to reveal answer</div>
+                  </div>
+                  <div class="flashcard-face flashcard-answer">
+                    <div class="flashcard-label">Answer</div>
+                    <div class="flashcard-text">${{escapeHtml(card.answer)}}</div>
+                    ${{card.keyPoint ? `<div class="flashcard-hint">Key point: ${{escapeHtml(card.keyPoint)}}</div>` : ''}}
+                    <div class="flashcard-hint">Click to show question</div>
+                  </div>
+                </div>
+              </div>`).join('')}}</div>`;
+          }}
+
+          function wireFlashcards() {{
+            document.querySelectorAll('[data-flashcard]').forEach((card) => {{
+              const toggle = () => {{
+                card.classList.toggle('flipped');
+                card.setAttribute('aria-label', card.classList.contains('flipped')
+                  ? 'Flashcard answer. Click to show the question.'
+                  : 'Flashcard question. Click to show the answer.');
+                resizeFrame();
+              }};
+              card.addEventListener('click', toggle);
+              card.addEventListener('keydown', (event) => {{
+                if (event.key === 'Enter' || event.key === ' ') {{
+                  event.preventDefault();
+                  toggle();
+                }}
+              }});
+            }});
           }}
 
           function renderMarkdown(value) {{
@@ -1100,7 +1171,8 @@ def show_puter_answer(prompt: str, response_key: str) -> None:
               const cachedAnswer = window.localStorage.getItem({safe_key});
               if (cachedAnswer) {{
                 status.remove();
-                answer.innerHTML = renderMarkdown(cachedAnswer);
+                answer.innerHTML = renderFlashcards(cachedAnswer) || renderMarkdown(cachedAnswer);
+                wireFlashcards();
                 resizeFrame();
                 return;
               }}
@@ -1108,7 +1180,8 @@ def show_puter_answer(prompt: str, response_key: str) -> None:
               const answerText = reply.message?.content ?? String(reply);
               window.localStorage.setItem({safe_key}, answerText);
               status.remove();
-              answer.innerHTML = renderMarkdown(answerText);
+              answer.innerHTML = renderFlashcards(answerText) || renderMarkdown(answerText);
+              wireFlashcards();
               resizeFrame();
             }} catch (error) {{
               status.textContent = 'Sia needs a quick sign-in in this browser before answering. Please sign in, then ask again.';
