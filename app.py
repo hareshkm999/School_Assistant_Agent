@@ -1509,7 +1509,13 @@ if question:
                 sources = previous_turn["sources"]
             else:
                 sources = retrieve(question, count=12 if is_flashcard_request(question) else 6)
-            relevant_sources = sources and sources[0]["distance"] <= 0.65
+            flashcard_request = is_flashcard_request(question)
+            # Flashcard retrieval deliberately gathers several chapter
+            # passages, so do not discard them solely because the first
+            # semantic distance is slightly above the normal answer cutoff.
+            relevant_sources = sources and (
+                flashcard_request or sources[0]["distance"] <= 0.65
+            )
             if not relevant_sources:
                 external_prompt = build_external_answer_prompt(question)
                 st.caption("No relevant local source was found. Sia is checking external information and will label it clearly.")
@@ -1526,7 +1532,6 @@ if question:
                 )
             else:
                 st.caption("Sia is preparing the answer below. A one-time sign-in may be needed.")
-                flashcards = is_flashcard_request(question)
                 puter_prompt = (
                     build_flashcard_prompt(question, sources)
                     if flashcards
