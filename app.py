@@ -63,7 +63,7 @@ Card 2
 Question: <short question or prompt>
 Answer: <accurate answer from the supplied material>
 Key point: <one important fact, formula, or example>"""
-FLASHCARD_RENDER_VERSION = "v2"
+FLASHCARD_RENDER_VERSION = "v3"
 
 
 def is_flashcard_request(question: str) -> bool:
@@ -992,6 +992,7 @@ def show_puter_answer(prompt: str, response_key: str) -> None:
         <div id="status">Sia is connecting and preparing your answer…</div>
         <div id="answer"></div>
         <script>
+          const STARTUP_WATCHDOG_MS = 15000;
           const MIN_FRAME_HEIGHT = 120;
           const MAX_FRAME_HEIGHT = 540;
 
@@ -1010,6 +1011,13 @@ def show_puter_answer(prompt: str, response_key: str) -> None:
           }}
 
           new ResizeObserver(resizeFrame).observe(document.getElementById('answer'));
+          const startupWatchdog = window.setTimeout(() => {{
+            const status = document.getElementById('status');
+            if (status && status.textContent.includes('connecting')) {{
+              status.textContent = 'Puter did not load in this browser. Please allow the Puter script, sign in, then refresh and ask again.';
+              resizeFrame();
+            }}
+          }}, STARTUP_WATCHDOG_MS);
 
           function escapeHtml(value) {{
             return value.replace(/&/g, '&amp;').replace(/</g, '&lt;')
@@ -1202,6 +1210,7 @@ def show_puter_answer(prompt: str, response_key: str) -> None:
             try {{
               const cachedAnswer = window.localStorage.getItem({safe_key});
               if (cachedAnswer) {{
+                window.clearTimeout(startupWatchdog);
                 status.remove();
                 answer.innerHTML = renderFlashcards(cachedAnswer) || renderMarkdown(cachedAnswer);
                 wireFlashcards();
@@ -1212,11 +1221,13 @@ def show_puter_answer(prompt: str, response_key: str) -> None:
               const reply = await chatWithTimeout(puter, {safe_prompt});
               const answerText = reply.message?.content ?? String(reply);
               window.localStorage.setItem({safe_key}, answerText);
+              window.clearTimeout(startupWatchdog);
               status.remove();
               answer.innerHTML = renderFlashcards(answerText) || renderMarkdown(answerText);
               wireFlashcards();
               resizeFrame();
             }} catch (error) {{
+              window.clearTimeout(startupWatchdog);
               status.textContent = 'The answer request did not finish. Please sign in to Puter if prompted, refresh the page, and ask again.';
               resizeFrame();
               console.error(error);
