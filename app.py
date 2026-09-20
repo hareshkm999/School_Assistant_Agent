@@ -735,9 +735,22 @@ def retrieve(question: str, count: int = 6) -> list[dict]:
         # Chapter lists and contents pages are often less semantically similar
         # than the book introduction. Search every stored passage for them.
         all_chunks = collection.get(include=["documents", "metadatas"])
+        topic_terms = {
+            term
+            for term in re.findall(r"[a-z0-9]{3,}", lowered)
+            if term
+            not in {
+                "the", "and", "for", "from", "with", "what", "are", "show", "list",
+                "full", "chapter", "chapters", "contents", "table", "names", "name",
+                "grade", "class", "wise", "chapterwise",
+            }
+        }
         chapter_candidates = []
         for doc, meta in zip(all_chunks["documents"], all_chunks["metadatas"]):
             document_lower = doc.lower()
+            source_lower = str(meta.get("source", "")).lower()
+            searchable_text = f"{document_lower} {source_lower}"
+            topic_overlap = len(topic_terms & set(re.findall(r"[a-z0-9]{3,}", searchable_text)))
             chapter_mentions = len(re.findall(r"\bchapter\s+\d+\b", document_lower))
             numbered_headings = len(
                 re.findall(r"(?m)^\s*(?:chapter\s*)?\d{1,2}[.)]?\s+[A-Z][^\n]{2,100}", doc)
@@ -745,7 +758,11 @@ def retrieve(question: str, count: int = 6) -> list[dict]:
             heading_markers = len(re.findall(r"(?m)^\s*(?:unit|lesson|chapter)\s+\d+\b", document_lower))
             if "contents" not in document_lower and chapter_mentions == 0 and numbered_headings < 2 and heading_markers == 0:
                 continue
-            score = chapter_mentions * 0.2 + numbered_headings * 0.15 + heading_markers * 0.25
+            # Do not use a generic contents page from another subject when the
+            # question names a topic such as Science or Mathematics.
+            if topic_terms and topic_overlap == 0:
+                continue
+            score = topic_overlap * 0.8 + chapter_mentions * 0.2 + numbered_headings * 0.15 + heading_markers * 0.25
             if "table of contents" in document_lower or "contents" in document_lower:
                 score += 1
             chapter_candidates.append(
