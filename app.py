@@ -61,6 +61,9 @@ Use the supplied local document context first. If the context is empty or does n
 label the response as external/general information and do not present it as confirmed school information.
 For requests for chapter names or a table of contents, combine all chapter titles found across the supplied
 passages before saying that information is missing. Do not rely on only one passage when the uploaded book is large.
+For requests such as "chapter-wise flashcards", first identify chapter headings from all supplied passages,
+then create flashcards for each identifiable chapter using the matching textbook content. Do not ask the user
+to provide chapter names when the uploaded textbook contains chapter headings or numbered topic headings.
 Lead with what the documents confirm. If an exact requested detail is missing, say what is confirmed and state that
 the exact detail is not stated in the provided material; suggest a useful next step such as checking the school
 office, teacher, or official result sheet. Do not use dismissive wording such as 'I can't' or 'I don't know'.
@@ -720,7 +723,20 @@ def retrieve(question: str, count: int = 6) -> list[dict]:
     lowered = question.lower()
     chapter_query = any(
         term in lowered
-        for term in ("chapter list", "chapter names", "table of contents", "contents", "chapters")
+        for term in (
+            "chapter list",
+            "chapter names",
+            "table of contents",
+            "contents",
+            "chapters",
+            "chapter wise",
+            "chapter-wise",
+            "chapterwise",
+        )
+    )
+    chapter_query = chapter_query or (
+        any(term in lowered for term in ("flashcards", "flash cards"))
+        and any(term in lowered for term in ("chapter", "unit", "lesson"))
     )
     if chapter_query:
         # Chapter lists and contents pages are often less semantically similar
@@ -730,9 +746,13 @@ def retrieve(question: str, count: int = 6) -> list[dict]:
         for doc, meta in zip(all_chunks["documents"], all_chunks["metadatas"]):
             document_lower = doc.lower()
             chapter_mentions = len(re.findall(r"\bchapter\s+\d+\b", document_lower))
-            if "contents" not in document_lower and chapter_mentions == 0:
+            numbered_headings = len(
+                re.findall(r"(?m)^\s*(?:chapter\s*)?\d{1,2}[.)]?\s+[A-Z][^\n]{2,100}", doc)
+            )
+            heading_markers = len(re.findall(r"(?m)^\s*(?:unit|lesson|chapter)\s+\d+\b", document_lower))
+            if "contents" not in document_lower and chapter_mentions == 0 and numbered_headings < 2 and heading_markers == 0:
                 continue
-            score = chapter_mentions * 0.2
+            score = chapter_mentions * 0.2 + numbered_headings * 0.15 + heading_markers * 0.25
             if "table of contents" in document_lower or "contents" in document_lower:
                 score += 1
             chapter_candidates.append(
@@ -748,7 +768,7 @@ def retrieve(question: str, count: int = 6) -> list[dict]:
             )
         if chapter_candidates:
             chapter_candidates.sort(key=lambda item: item[0], reverse=True)
-            return [item[1] for item in chapter_candidates[: max(count, 10)]]
+            return [item[1] for item in chapter_candidates[: max(count, 14)]]
 
     retrieval_question = question
     if chapter_query:
