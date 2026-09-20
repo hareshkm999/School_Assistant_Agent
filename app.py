@@ -822,6 +822,28 @@ def is_short_follow_up(question: str) -> bool:
     return len(normalized.split()) <= 8 and normalized.startswith(follow_up_starts)
 
 
+def is_flashcard_request(question: str) -> bool:
+    normalized = question.lower()
+    return "flashcard" in normalized or "flash card" in normalized
+
+
+def build_flashcard_prompt(question: str, sources: list[dict]) -> str:
+    context = "\n\n".join(f"[{i + 1}] {item['text']}" for i, item in enumerate(sources))
+    return f"""You are Sia, the Academic AI Assistant for Brigade Public School, Attapur.
+
+Create a study flashcard deck using only the supplied textbook passages. Return ONLY valid JSON with this shape:
+{{"cards":[{{"question":"short question","answer":"accurate answer from the passages"}}]}}
+
+Create 5 to 10 cards unless the user requests a different number. Keep each answer concise and age-appropriate.
+Do not use markdown, code fences, citations, or extra text outside the JSON. Never invent information.
+
+User request: {question}
+
+Supplied textbook passages:
+{context}
+"""
+
+
 def build_answer_prompt(question: str, sources: list[dict]) -> str:
     context = "\n\n".join(f"[{i + 1}] {item['text']}" for i, item in enumerate(sources))
     history = st.session_state.get("chat_history", [])[-3:]
@@ -908,7 +930,7 @@ Attached file text:
 Answer:"""
 
 
-def show_puter_answer(prompt: str, response_key: str) -> None:
+def show_puter_answer(prompt: str, response_key: str, flashcards: bool = False) -> None:
     """Render a Puter.ai request in the visitor's browser.
 
     Puter handles sign-in in the browser; no API key is stored by this app.
@@ -916,6 +938,7 @@ def show_puter_answer(prompt: str, response_key: str) -> None:
     # Prevent document text from closing the script element in the embedded frame.
     safe_prompt = json.dumps(prompt).replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026")
     safe_key = json.dumps(f"sia-answer-{response_key}")
+    flashcard_mode = json.dumps(flashcards)
     components.html(
         f"""
         <script src="https://js.puter.com/v2/"></script>
@@ -943,6 +966,15 @@ def show_puter_answer(prompt: str, response_key: str) -> None:
           #answer th, #answer td {{ border: 1px solid #4b5563; padding: 0.45rem 0.65rem; text-align: left; white-space: nowrap; }}
           #answer th {{ background: #273244; color: #ffffff; font-weight: 700; }}
           #answer td {{ background: #151b26; color: #f7f9fc; }}
+          #answer .deck {{ align-items: center; display: flex; flex-direction: column; gap: 1rem; padding: 0.5rem 0; }}
+          #answer .deck-card {{ align-items: center; background: #ffffff; border: 1px solid #87909e; border-radius: 4px; box-sizing: border-box; color: #111827; display: flex; font-size: 1.25rem; font-weight: 700; justify-content: center; min-height: 245px; padding: 2rem; text-align: center; width: min(100%, 560px); }}
+          #answer .deck-card.answer {{ background: #fff3cd; color: #d9534f; }}
+          #answer .deck-progress {{ color: #b8c0cd; font-size: 0.9rem; font-weight: 600; }}
+          #answer .deck-buttons {{ display: flex; gap: 1rem; justify-content: center; }}
+          #answer .deck-buttons button {{ border: 1px solid #111827; border-radius: 2px; color: #ffffff; cursor: pointer; font-size: 1rem; padding: 0.55rem 1rem; }}
+          #answer .flip-button {{ background: #087ff5; }}
+          #answer .next-button {{ background: #28a745; }}
+          #answer .deck-buttons button:disabled {{ cursor: not-allowed; opacity: 0.55; }}
         </style>
         <div id="status">Sia is connecting and preparing your answer…</div>
         <div id="answer"></div>
@@ -1002,6 +1034,55 @@ def show_puter_answer(prompt: str, response_key: str) -> None:
                 () => reject(new Error('The answer request timed out')), timeoutMs
               )),
             ]);
+          }}
+
+          function renderFlashcardDeck(value) {{
+            let parsed;
+            try {{
+              const cleaned = value.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '');
+              parsed = JSON.parse(cleaned);
+            }} catch (error) {{
+              return '';
+            }}
+            const cards = Array.isArray(parsed) ? parsed : parsed.cards;
+            if (!Array.isArray(cards) || !cards.length) return '';
+            const validCards = cards.filter((card) => card && card.question && card.answer)
+              .map((card) => ({{ question: String(card.question), answer: String(card.answer) }}));
+            if (!validCards.length) return '';
+            let index = 0;
+            let showingAnswer = false;
+            const update = () => {{
+              const card = validCards[index];
+              const cardElement = document.getElementById('deck-card');
+              cardElement.className = `deck-card${{showingAnswer ? ' answer' : ''}}`;
+              cardElement.innerHTML = escapeHtml(showingAnswer ? card.answer : card.question);
+              document.getElementById('deck-progress').textContent = `Card ${{index + 1}} of ${{validCards.length}}`;
+              document.getElementById('flip-card').textContent = showingAnswer ? 'Show Question' : 'Flip Card';
+              document.getElementById('next-card').disabled = index === validCards.length - 1;
+              resizeFrame();
+            }};
+            setTimeout(() => {{
+              document.getElementById('flip-card').addEventListener('click', () => {{
+                showingAnswer = !showingAnswer;
+                update();
+              }});
+              document.getElementById('next-card').addEventListener('click', () => {{
+                if (index < validCards.length - 1) {{
+                  index += 1;
+                  showingAnswer = false;
+                  update();
+                }}
+              }});
+              update();
+            }});
+            return `<div class="deck">
+              <div id="deck-progress" class="deck-progress"></div>
+              <div id="deck-card" class="deck-card"></div>
+              <div class="deck-buttons">
+                <button id="flip-card" class="flip-button" type="button">Flip Card</button>
+                <button id="next-card" class="next-button" type="button">Next Card</button>
+              </div>
+            </div>`;
           }}
 
           function renderMarkdown(value) {{
@@ -1101,7 +1182,7 @@ def show_puter_answer(prompt: str, response_key: str) -> None:
               if (cachedAnswer) {{
                 window.clearTimeout(startupWatchdog);
                 status.remove();
-                answer.innerHTML = renderMarkdown(cachedAnswer);
+                answer.innerHTML = {flashcard_mode} ? renderFlashcardDeck(cachedAnswer) : renderMarkdown(cachedAnswer);
                 resizeFrame();
                 return;
               }}
@@ -1111,7 +1192,7 @@ def show_puter_answer(prompt: str, response_key: str) -> None:
               window.localStorage.setItem({safe_key}, answerText);
               window.clearTimeout(startupWatchdog);
               status.remove();
-              answer.innerHTML = renderMarkdown(answerText);
+              answer.innerHTML = {flashcard_mode} ? renderFlashcardDeck(answerText) : renderMarkdown(answerText);
               resizeFrame();
             }} catch (error) {{
               window.clearTimeout(startupWatchdog);
@@ -1148,7 +1229,11 @@ def render_saved_turn(turn: dict) -> None:
         if turn.get("answer"):
             st.markdown(turn["answer"])
         elif turn.get("puter_prompt"):
-            show_puter_answer(turn["puter_prompt"], turn["response_key"])
+            show_puter_answer(
+                turn["puter_prompt"],
+                turn["response_key"],
+                flashcards=turn.get("flashcards", False),
+            )
         elif turn.get("sources"):
             st.info("Sia answered this question using the saved document sources below. Ask a follow-up to continue the discussion.")
             with st.expander("Sources used"):
@@ -1418,11 +1503,16 @@ if question:
                 )
             else:
                 st.caption("Sia is preparing the answer below. A one-time sign-in may be needed.")
-                puter_prompt = build_answer_prompt(question, sources)
+                flashcards = is_flashcard_request(question)
+                puter_prompt = (
+                    build_flashcard_prompt(question, sources)
+                    if flashcards
+                    else build_answer_prompt(question, sources)
+                )
                 response_key = hashlib.sha256(
                     f"{len(st.session_state.chat_history)}:{puter_prompt}".encode()
                 ).hexdigest()[:20]
-                show_puter_answer(puter_prompt, response_key)
+                show_puter_answer(puter_prompt, response_key, flashcards=flashcards)
                 with st.expander("Sources used"):
                     for index, item in enumerate(sources, start=1):
                         st.markdown(f"**[{index}] {item['source']} — passage {item['chunk']}**")
@@ -1433,5 +1523,6 @@ if question:
                         "sources": sources,
                         "puter_prompt": puter_prompt,
                         "response_key": response_key,
+                        "flashcards": flashcards,
                     }
                 )
