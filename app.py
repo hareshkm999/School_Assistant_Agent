@@ -843,6 +843,21 @@ def is_flashcard_request(question: str) -> bool:
     return "flashcard" in normalized or "flash card" in normalized
 
 
+def is_quiz_request(question: str) -> bool:
+    normalized = question.lower()
+    quiz_keywords = (
+        "quiz",
+        "mcq",
+        "multiple choice",
+        "practice questions",
+        "question paper",
+        "test me",
+        "quiz me",
+        "assessment",
+    )
+    return any(keyword in normalized for keyword in quiz_keywords)
+
+
 def build_flashcard_prompt(question: str, sources: list[dict]) -> str:
     context = "\n\n".join(f"[{i + 1}] {item['text']}" for i, item in enumerate(sources))
     quoted_topics = re.findall(r"""["']([^"']{4,})["']""", question)
@@ -859,6 +874,30 @@ chapter content, not the book structure. Do not ask how many chapters are in the
 what the textbook is called, or whether the chapter exists. Every answer must be directly supported by the supplied
 passages; if a detail is not present, do not create a card about it. Keep answers concise and age-appropriate.
 Do not use markdown, code fences, citations, or extra text outside the JSON. Never invent information.
+
+User request: {question}
+
+Supplied textbook passages:
+{context}
+"""
+
+
+def build_quiz_prompt(question: str, sources: list[dict]) -> str:
+    context = "\n\n".join(f"[{i + 1}] {item['text']}" for i, item in enumerate(sources))
+    quoted_topics = re.findall(r"""[\"']([^\"']{4,})[\"']""", question)
+    requested_topic = quoted_topics[0] if quoted_topics else "the requested lesson"
+    return f"""You are Sia, the Academic AI Assistant for Brigade Public School, Attapur.
+
+Create a short multiple-choice quiz specifically for the lesson or chapter \"{requested_topic}\" using only the supplied
+textbook passages. Return ONLY valid JSON with this shape:
+{{"questions":[{{"question":"short question","options":["A option","B option","C option","D option"],"answer":"B","explanation":"one sentence reason"}}]}}
+
+Create 5 questions unless the user asks for a different number. Each question must have exactly 4 options, only one correct answer,
+and explanations that are brief and grounded in the passage. Questions must test the lesson content, not the book structure.
+Do not ask how many chapters are in the book, what the chapter number is, what the textbook is called, or whether the chapter exists.
+Every answer must be directly supported by the supplied passages; if a detail is not present, do not create a question about it.
+Keep questions clear, age-appropriate, and easy to answer from the passages. Do not use markdown, code fences, citations, or extra text outside the JSON.
+Never invent information.
 
 User request: {question}
 
@@ -953,7 +992,7 @@ Attached file text:
 Answer:"""
 
 
-def show_puter_answer(prompt: str, response_key: str, flashcards: bool = False) -> None:
+def show_puter_answer(prompt: str, response_key: str, flashcards: bool = False, quiz: bool = False) -> None:
     """Render a Puter.ai request in the visitor's browser.
 
     Puter handles sign-in in the browser; no API key is stored by this app.
@@ -962,6 +1001,7 @@ def show_puter_answer(prompt: str, response_key: str, flashcards: bool = False) 
     safe_prompt = json.dumps(prompt).replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026")
     safe_key = json.dumps(f"sia-answer-{response_key}")
     flashcard_mode = json.dumps(flashcards)
+    quiz_mode = json.dumps(quiz)
     components.html(
         f"""
         <script src="https://js.puter.com/v2/"></script>
@@ -998,6 +1038,19 @@ def show_puter_answer(prompt: str, response_key: str, flashcards: bool = False) 
           #answer .flip-button {{ background: #087ff5; }}
           #answer .next-button {{ background: #28a745; }}
           #answer .deck-buttons button:disabled {{ cursor: not-allowed; opacity: 0.55; }}
+          #answer .quiz-deck {{ display: flex; flex-direction: column; gap: 0.8rem; padding: 0.4rem 0 0.8rem; }}
+          #answer .quiz-box {{ background: #121b2a; border: 1px solid #303d4d; border-radius: 10px; padding: 1rem; }}
+          #answer .quiz-box h3 {{ color: #f7f9fc; font-size: 1.05rem; margin: 0 0 0.7rem; }}
+          #answer .quiz-options {{ display: flex; flex-direction: column; gap: 0.55rem; }}
+          #answer .quiz-option {{ background: #1d2430; border: 1px solid #4b5563; border-radius: 8px; color: #f7f9fc; cursor: pointer; font-size: 0.96rem; padding: 0.7rem 0.8rem; text-align: left; }}
+          #answer .quiz-option.correct {{ background: rgba(40, 167, 69, 0.2); border-color: #28a745; }}
+          #answer .quiz-option.wrong {{ background: rgba(217, 83, 79, 0.18); border-color: #d9534f; }}
+          #answer .quiz-option.selected {{ box-shadow: inset 0 0 0 2px #8ec5ff; }}
+          #answer .quiz-feedback {{ color: #dfeaf8; font-size: 0.92rem; margin-top: 0.6rem; }}
+          #answer .quiz-controls {{ display: flex; justify-content: space-between; gap: 0.8rem; margin-top: 0.3rem; }}
+          #answer .quiz-controls button {{ border: none; border-radius: 6px; color: #ffffff; cursor: pointer; font-size: 0.9rem; padding: 0.5rem 0.9rem; }}
+          #answer .quiz-prev {{ background: #495567; }}
+          #answer .quiz-next {{ background: #28a745; }}
         </style>
         <div id="status">Sia is connecting and preparing your answer…</div>
         <div id="answer"></div>
@@ -1108,6 +1161,130 @@ def show_puter_answer(prompt: str, response_key: str, flashcards: bool = False) 
             </div>`;
           }}
 
+          function renderQuizDeck(value) {{
+            let parsed;
+            try {{
+              const cleaned = value.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '');
+              parsed = JSON.parse(cleaned);
+            }} catch (error) {{
+              return '';
+            }}
+            const questions = Array.isArray(parsed) ? parsed : parsed.questions;
+            if (!Array.isArray(questions) || !questions.length) return '';
+            const validQuestions = questions.filter((question) => question && Array.isArray(question.options) && question.question)
+              .map((question) => {{
+                const options = question.options.map((option) => String(option));
+                const rawAnswer = String(question.answer ?? '').trim();
+                const normalizedAnswer = rawAnswer.toUpperCase().replace(/[^A-D]/g, '');
+                const directMatchIndex = options.findIndex((option) => option.toLowerCase() === rawAnswer.toLowerCase());
+                const letterMatchIndex = ['A', 'B', 'C', 'D'].indexOf(normalizedAnswer);
+                const correctIndex = directMatchIndex >= 0
+                  ? directMatchIndex
+                  : letterMatchIndex >= 0
+                    ? letterMatchIndex
+                    : 0;
+                return {{
+                  question: String(question.question),
+                  options,
+                  answer: rawAnswer || String.fromCharCode(65 + correctIndex),
+                  answerIndex: correctIndex,
+                  explanation: question.explanation ? String(question.explanation) : '',
+                }};
+              }});
+            if (!validQuestions.length) return '';
+            let index = 0;
+            let finished = false;
+            const answers = new Array(validQuestions.length).fill(null);
+            const getScore = () => validQuestions.reduce((total, question, questionIndex) => total + (answers[questionIndex] === question.answerIndex ? 1 : 0), 0);
+            const update = () => {{
+              const container = document.getElementById('quiz-deck');
+              if (!container) return;
+              if (finished) {{
+                const score = getScore();
+                const total = validQuestions.length;
+                const percentage = Math.round((score / total) * 100);
+                const summaryRows = validQuestions.map((question, questionIndex) => {{
+                  const chosen = answers[questionIndex];
+                  const selectedLetter = chosen === null ? 'Not answered' : String.fromCharCode(65 + chosen);
+                  const isCorrect = chosen === question.answerIndex;
+                  const status = isCorrect ? '✅ Correct' : '❌ Incorrect';
+                  return `<div style="margin-top: 0.5rem; font-size: 0.95rem;">${{questionIndex + 1}}. ${{status}} — your choice: ${{selectedLetter}}.</div>`;
+                }}).join('');
+                container.innerHTML = `
+                  <div class="quiz-box">
+                    <h3>Quiz Result</h3>
+                    <p><strong>${{score}} / ${{total}}</strong> correct (${{percentage}}%)</p>
+                    ${{summaryRows}}
+                  </div>
+                `;
+                resizeFrame();
+                return;
+              }}
+              const quizQuestion = validQuestions[index];
+              const selectedIndex = answers[index];
+              const optionButtons = quizQuestion.options.map((option, optionIndex) => {{
+                const isCorrect = optionIndex === quizQuestion.answerIndex;
+                const isSelected = selectedIndex === optionIndex;
+                const classes = [
+                  'quiz-option',
+                  isCorrect && selectedIndex !== null ? 'correct' : '',
+                  isSelected && !isCorrect && selectedIndex !== null ? 'wrong' : '',
+                  isSelected ? 'selected' : '',
+                ].filter(Boolean).join(' ');
+                return `<button class="${{classes}}" type="button" data-option-index="${{optionIndex}}">${{String.fromCharCode(65 + optionIndex)}}. ${{escapeHtml(option)}}</button>`;
+              }}).join('');
+              const feedback = selectedIndex === null
+                ? '<div class="quiz-feedback">Choose the best answer.</div>'
+                : `
+                  <div class="quiz-feedback">${{selectedIndex === quizQuestion.answerIndex ? '✅ Correct.' : '❌ Not quite.'}} ${{escapeHtml(quizQuestion.explanation || '')}}</div>
+                `;
+              container.innerHTML = `
+                <div class="quiz-box">
+                  <h3>Question ${{index + 1}} of ${{validQuestions.length}}</h3>
+                  <p>${{escapeHtml(quizQuestion.question)}}</p>
+                  <div class="quiz-options">${{optionButtons}}</div>
+                  ${{feedback}}
+                  <div class="quiz-controls">
+                    <button type="button" class="quiz-prev" id="quiz-prev" ${{index === 0 ? 'disabled' : ''}}>Previous</button>
+                    <button type="button" class="quiz-next" id="quiz-next">${{index === validQuestions.length - 1 ? 'Finish' : 'Next Question'}}</button>
+                  </div>
+                </div>
+              `;
+              container.querySelectorAll('.quiz-option').forEach((button) => {{
+                button.addEventListener('click', () => {{
+                  answers[index] = Number(button.dataset.optionIndex);
+                  update();
+                }});
+              }});
+              const prevButton = document.getElementById('quiz-prev');
+              if (prevButton) {{
+                prevButton.addEventListener('click', () => {{
+                  if (index > 0) {{
+                    index -= 1;
+                    update();
+                  }}
+                }});
+              }}
+              const nextButton = document.getElementById('quiz-next');
+              if (nextButton) {{
+                nextButton.addEventListener('click', () => {{
+                  if (index < validQuestions.length - 1) {{
+                    if (answers[index] === null) return;
+                    index += 1;
+                    update();
+                  }} else {{
+                    if (answers[index] === null) return;
+                    finished = true;
+                    update();
+                  }}
+                }});
+              }}
+              resizeFrame();
+            }};
+            setTimeout(() => update());
+            return '<div id="quiz-deck" class="quiz-deck"></div>';
+          }}
+
           function renderMarkdown(value) {{
             const slash = String.fromCharCode(92);
             const normalizeMath = (text) => text
@@ -1205,7 +1382,7 @@ def show_puter_answer(prompt: str, response_key: str, flashcards: bool = False) 
               if (cachedAnswer) {{
                 window.clearTimeout(startupWatchdog);
                 status.remove();
-                answer.innerHTML = {flashcard_mode} ? renderFlashcardDeck(cachedAnswer) : renderMarkdown(cachedAnswer);
+                answer.innerHTML = {quiz_mode} ? renderQuizDeck(cachedAnswer) : {flashcard_mode} ? renderFlashcardDeck(cachedAnswer) : renderMarkdown(cachedAnswer);
                 resizeFrame();
                 return;
               }}
@@ -1215,7 +1392,7 @@ def show_puter_answer(prompt: str, response_key: str, flashcards: bool = False) 
               window.localStorage.setItem({safe_key}, answerText);
               window.clearTimeout(startupWatchdog);
               status.remove();
-              answer.innerHTML = {flashcard_mode} ? renderFlashcardDeck(answerText) : renderMarkdown(answerText);
+              answer.innerHTML = {quiz_mode} ? renderQuizDeck(answerText) : {flashcard_mode} ? renderFlashcardDeck(answerText) : renderMarkdown(answerText);
               resizeFrame();
             }} catch (error) {{
               window.clearTimeout(startupWatchdog);
@@ -1508,13 +1685,14 @@ if question:
                 # prior lesson instead of retrieving an unrelated document.
                 sources = previous_turn["sources"]
             else:
-                sources = retrieve(question, count=12 if is_flashcard_request(question) else 6)
+                sources = retrieve(question, count=12 if is_flashcard_request(question) or is_quiz_request(question) else 6)
             flashcard_request = is_flashcard_request(question)
-            # Flashcard retrieval deliberately gathers several chapter
+            quiz_request = is_quiz_request(question)
+            # Flashcard and quiz retrieval deliberately gather several chapter
             # passages, so do not discard them solely because the first
             # semantic distance is slightly above the normal answer cutoff.
             relevant_sources = sources and (
-                flashcard_request or sources[0]["distance"] <= 0.65
+                flashcard_request or quiz_request or sources[0]["distance"] <= 0.65
             )
             if not relevant_sources:
                 external_prompt = build_external_answer_prompt(question)
@@ -1535,12 +1713,19 @@ if question:
                 puter_prompt = (
                     build_flashcard_prompt(question, sources)
                     if flashcard_request
+                    else build_quiz_prompt(question, sources)
+                    if quiz_request
                     else build_answer_prompt(question, sources)
                 )
                 response_key = hashlib.sha256(
                     f"{len(st.session_state.chat_history)}:{puter_prompt}".encode()
                 ).hexdigest()[:20]
-                show_puter_answer(puter_prompt, response_key, flashcards=flashcard_request)
+                show_puter_answer(
+                    puter_prompt,
+                    response_key,
+                    flashcards=flashcard_request,
+                    quiz=quiz_request,
+                )
                 with st.expander("Sources used"):
                     for index, item in enumerate(sources, start=1):
                         st.markdown(f"**[{index}] {item['source']} — passage {item['chunk']}**")
@@ -1552,5 +1737,6 @@ if question:
                         "puter_prompt": puter_prompt,
                         "response_key": response_key,
                         "flashcards": flashcard_request,
+                        "quiz": quiz_request,
                     }
                 )
