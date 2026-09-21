@@ -10,22 +10,22 @@ def generate_free_image(prompt, filename="pollinations_output.png"):
         ("default", {"width": 512, "height": 512, "seed": 42}),
     ]
 
-    print("📡 Requesting image from Pollinations Open API...")
+    print("Requesting image from Pollinations Open API...")
     for name, parameters in attempts:
         try:
             response = requests.get(base_url, params=parameters, timeout=120)
             response.raise_for_status()
             image = Image.open(io.BytesIO(response.content))
             image.save(filename)
-            print(f"🎉 Success using the {name} model. Image saved locally as: {filename}")
+            print(f"Success using the {name} model. Image saved locally as: {filename}")
             return
         except requests.RequestException as exc:
-            print(f"⚠️ Pollinations {name} request failed: {exc}")
+            print(f"Pollinations {name} request failed: {exc}")
         except (OSError, ValueError) as exc:
-            print(f"⚠️ Pollinations {name} returned an invalid image: {exc}")
+            print(f"Pollinations {name} returned an invalid image: {exc}")
 
     print(
-        "❌ Pollinations could not generate this image. "
+        "Pollinations could not generate this image. "
         "The service may be temporarily unavailable or may require authentication."
     )
 
