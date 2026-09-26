@@ -1947,11 +1947,12 @@ st.html(
                     const actionRoots = [
                         ...toolbar.querySelectorAll('[data-testid="stToolbarActionButton"]'),
                         ...toolbar.querySelectorAll('[data-testid="stToolbarAction"]'),
-                    ];
+                    ].filter((element) => !element.closest('[role="menu"], [data-baseweb="popover"], [data-testid*="popover"]'));
                     const actions = actionRoots.length
                         ? actionRoots
                         : [...toolbar.querySelectorAll('button, a, [role="button"]')]
-                            .filter((element) => !element.parentElement.closest('button, a, [role="button"]'));
+                            .filter((element) => !element.parentElement.closest('button, a, [role="button"]'))
+                            .filter((element) => !element.closest('[role="menu"], [data-baseweb="popover"], [data-testid*="popover"]'));
                     actions
                         .filter(isUnwantedToolbarAction)
                         .forEach((element) => element.classList.add('stToolbarHiddenAction'));
