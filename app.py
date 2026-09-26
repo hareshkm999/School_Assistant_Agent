@@ -1869,6 +1869,132 @@ def render_periodic_game() -> None:
             )
             st.rerun()
 
+
+MEMORY_GAME_ANIMALS = (
+    "Cat", "Dog", "Elephant", "Giraffe",
+    "Lion", "Monkey", "Penguin", "Tiger",
+)
+
+
+def is_memory_game_request(question: str) -> bool:
+    normalized = re.sub(r"[^a-z0-9]+", " ", question.casefold()).strip()
+    return bool(
+        re.search(r"\b(?:start|play|begin|launch)\s+(?:an?\s+)?(?:animal\s+)?memory\s+game\b", normalized)
+        or re.search(r"\banimal\s+memory\s+game\b", normalized)
+        or re.search(r"\bmemory\s+game\b", normalized)
+        or re.search(r"\bmatching\s+(?:animal\s+)?game\b", normalized)
+    )
+
+
+def initialize_memory_game() -> None:
+    cards = list(MEMORY_GAME_ANIMALS) * 2
+    random.shuffle(cards)
+    st.session_state.memory_game = {
+        "cards": cards,
+        "matched": [False] * len(cards),
+        "flipped": [],
+        "moves": 0,
+        "active": True,
+        "feedback": "",
+    }
+
+
+def clear_memory_game() -> None:
+    clear_game_state(
+        "memory_game",
+        "Animal memory game started. Use the controls below.",
+        "memory_card_",
+    )
+    for key in list(st.session_state):
+        if key.startswith("memory_"):
+            st.session_state.pop(key, None)
+
+
+def render_memory_game() -> None:
+    game = st.session_state.get("memory_game")
+    if not game or game.get("dismissed"):
+        return
+
+    st.divider()
+    st.subheader("Animal memory game")
+    matched_count = sum(game["matched"]) // 2
+    total_pairs = len(MEMORY_GAME_ANIMALS)
+    st.caption(f"Moves: {game['moves']} · Pairs found: {matched_count} / {total_pairs}")
+
+    if game.get("feedback"):
+        if game["feedback"].startswith("Great"):
+            st.success(game["feedback"])
+        else:
+            st.warning(game["feedback"])
+
+    if not game.get("active"):
+        st.success(
+            f"You matched all {total_pairs} animal pairs in {game['moves']} moves!"
+        )
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            if st.button("Restart game", key="memory_restart_complete"):
+                initialize_memory_game()
+                st.rerun()
+        with col2:
+            if st.button("Finish game", key="memory_finish_complete"):
+                clear_memory_game()
+                st.rerun()
+        with col3:
+            if st.button("Exit game", key="memory_exit_complete"):
+                clear_memory_game()
+                st.rerun()
+        return
+
+    if len(game["flipped"]) == 2 and not game.get("feedback", "").startswith("Great"):
+        if st.button("Continue", key="memory_continue"):
+            game["flipped"] = []
+            game["feedback"] = ""
+            st.rerun()
+
+    columns = st.columns(4)
+    for index, animal in enumerate(game["cards"]):
+        is_visible = game["matched"][index] or index in game["flipped"]
+        label = animal if is_visible else "?"
+        with columns[index % 4]:
+            if st.button(
+                label,
+                key=f"memory_card_{index}",
+                disabled=is_visible or len(game["flipped"]) >= 2,
+                width="stretch",
+            ):
+                game["flipped"].append(index)
+                if len(game["flipped"]) == 2:
+                    first, second = game["flipped"]
+                    game["moves"] += 1
+                    if game["cards"][first] == game["cards"][second]:
+                        game["matched"][first] = True
+                        game["matched"][second] = True
+                        game["flipped"] = []
+                        game["feedback"] = f"Great match! You found the {animal} pair."
+                        if all(game["matched"]):
+                            game["active"] = False
+                    else:
+                        game["feedback"] = "Not a match yet. Remember these cards and try again."
+                else:
+                    game["feedback"] = ""
+                st.rerun()
+
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        if st.button("Restart game", key="memory_restart"):
+            initialize_memory_game()
+            st.rerun()
+    with col2:
+        if st.button("Finish game", key="memory_finish"):
+            clear_memory_game()
+            st.rerun()
+    with col3:
+        if st.button("Exit game", key="memory_exit"):
+            clear_memory_game()
+            st.rerun()
+
+
 def render_saved_turn(turn: dict) -> None:
     """Render conversation state retained for this browser session."""
     with st.chat_message("user"):
@@ -2180,6 +2306,10 @@ if question:
             initialize_periodic_game(question)
             st.session_state.chat_history.append({"question": question, "answer": "Periodic table game started. Use the controls below."})
             st.rerun()
+        elif is_memory_game_request(question):
+            initialize_memory_game()
+            st.session_state.chat_history.append({"question": question, "answer": "Animal memory game started. Use the controls below."})
+            st.rerun()
         elif normalized_question in {
             "who are you", "what are you", "tell me about yourself", "tell me about sia", "what is sia",
             "who created you", "who made you", "who developed you", "who is your creator", "who built you",
@@ -2252,3 +2382,4 @@ if question:
 render_learning_suite()
 render_table_game()
 render_periodic_game()
+render_memory_game()
