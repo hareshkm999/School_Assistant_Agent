@@ -1897,9 +1897,6 @@ st.set_page_config(page_title="Brigade School Intelligent Agent", page_icon=str(
 st.html(
     """
     <style>
-        .stToolbarHiddenMenu {
-            display: none !important;
-        }
         .stToolbarHiddenAction {
             display: none !important;
         }
@@ -1907,7 +1904,13 @@ st.html(
     <script>
         (() => {
             const observedDocuments = new WeakSet();
-            const menuTextMarkers = /\b(system|light|dark|rerun|clear cache|print|record screen|version)\b/i;
+            const controllerSelectors = [
+                '[data-testid="stMainMenu"]',
+                '[data-testid*="MainMenu"]',
+                'button[aria-label*="main menu" i]',
+                'button[title*="main menu" i]',
+                '[role="button"][aria-label*="main menu" i]',
+            ];
             const getDocuments = () => {
                 const documents = [document];
                 try {
@@ -1919,71 +1922,57 @@ st.html(
                 }
                 return documents;
             };
-            const accessibilityText = (element) => [
-                element,
-                ...element.querySelectorAll('[aria-label], [title], [data-testid]'),
-            ]
-                .flatMap((node) => [
-                    node.getAttribute('aria-label'),
-                    node.getAttribute('title'),
-                    node.getAttribute('data-testid'),
-                    node.textContent,
-                ])
-                .filter(Boolean)
-                .join(' ')
-                .trim()
-                .toLowerCase();
-            const isUnwantedToolbarAction = (element) => {
-                const text = accessibilityText(element);
-                const githubLink = [element, ...element.querySelectorAll('[href]')]
-                    .some((node) => (node.getAttribute('href') || '').toLowerCase().includes('github.com'));
-                return (
-                    githubLink ||
-                    /\b(share|edit|favorite|favourite|star|github|fork)\b/.test(text)
-                );
+            const isMenuContent = (element) => Boolean(
+                element.closest('[role="menu"], [data-baseweb="menu"], [data-baseweb="popover"]')
+            );
+            const findController = (toolbar) => {
+                for (const selector of controllerSelectors) {
+                    const controller = toolbar.querySelector(selector);
+                    if (controller) return controller.closest('button, a, [role="button"]') || controller;
+                }
+                return [...toolbar.querySelectorAll('button, a, [role="button"]')].find((element) => {
+                    const label = [
+                        element.getAttribute('aria-label'),
+                        element.getAttribute('title'),
+                        element.getAttribute('data-testid'),
+                    ]
+                        .filter(Boolean)
+                        .join(' ')
+                        .toLowerCase();
+                    return /\bmain\\s*menu\b/.test(label) || label.includes('stmainmenu');
+                });
             };
             const hideToolbarActions = (doc) => {
                 doc.querySelectorAll('[data-testid="stToolbar"]').forEach((toolbar) => {
-                    const actionRoots = [
-                        ...toolbar.querySelectorAll('[data-testid="stToolbarActionButton"]'),
-                        ...toolbar.querySelectorAll('[data-testid="stToolbarAction"]'),
-                    ].filter((element) => !element.closest('[role="menu"], [data-baseweb="popover"], [data-testid*="popover"]'));
-                    const actions = actionRoots.length
-                        ? actionRoots
-                        : [...toolbar.querySelectorAll('button, a, [role="button"]')]
-                            .filter((element) => !element.parentElement.closest('button, a, [role="button"]'))
-                            .filter((element) => !element.closest('[role="menu"], [data-baseweb="popover"], [data-testid*="popover"]'));
-                    actions
-                        .filter(isUnwantedToolbarAction)
-                        .forEach((element) => element.classList.add('stToolbarHiddenAction'));
-                });
-            };
-            const hideMenuContents = (doc) => {
-                doc.querySelectorAll(
-                    '[data-testid*="MainMenu"], [data-testid*="mainMenu"], [role="menu"], [data-baseweb="menu"]'
-                ).forEach((menu) => {
-                    const testId = (menu.getAttribute('data-testid') || '').toLowerCase();
-                    const isRecognizedMenu = testId.includes('mainmenu') ||
-                        (menu.matches('[role="menu"]') && menuTextMarkers.test(menu.textContent || ''));
-                    if (!isRecognizedMenu || menu.closest('[data-testid="stToolbar"]')) return;
-                    const popover = menu.closest('[data-baseweb="popover"], [data-testid*="Popover"]');
-                    (popover || menu).classList.add('stToolbarHiddenMenu');
+                    const controller = findController(toolbar);
+                    if (!controller) return;
+                    toolbar.querySelectorAll('button, a, [role="button"]').forEach((action) => {
+                        if (
+                            action === controller ||
+                            action.contains(controller) ||
+                            controller.contains(action) ||
+                            isMenuContent(action)
+                        ) {
+                            return;
+                        }
+                        action.classList.add('stToolbarHiddenAction');
+                    });
                 });
             };
             const updateDocument = (doc) => {
                 hideToolbarActions(doc);
-                hideMenuContents(doc);
                 if (!observedDocuments.has(doc) && doc.body) {
-                    new MutationObserver(() => {
-                        hideToolbarActions(doc);
-                        hideMenuContents(doc);
-                    }).observe(doc.body, { childList: true, subtree: true });
+                    new MutationObserver(() => hideToolbarActions(doc)).observe(doc.body, {
+                        childList: true,
+                        subtree: true,
+                    });
                     observedDocuments.add(doc);
                 }
             };
             const updateAllDocuments = () => getDocuments().forEach(updateDocument);
             updateAllDocuments();
-            setTimeout(updateAllDocuments, 250);
+            const retryTimer = setInterval(updateAllDocuments, 500);
+            setTimeout(() => clearInterval(retryTimer), 30000);
         })();
 
         (() => {
