@@ -1896,6 +1896,14 @@ def render_saved_turn(turn: dict) -> None:
 st.set_page_config(page_title="Brigade School Intelligent Agent", page_icon=str(LOGO_PATH), layout="wide")
 st.html(
     """
+    <style>
+        .stToolbarHiddenAction {
+            display: none !important;
+        }
+        [data-testid="stToolbar"].stToolbarHiddenAction {
+            visibility: hidden !important;
+        }
+    </style>
     <script>
         (() => {
             const getAppDocument = () => {
@@ -1907,34 +1915,9 @@ st.html(
             };
 
             const appDocument = getAppDocument();
-            const actionSelector = 'button, a, [role="button"]';
-            const actionText = (element) => [
-                element.getAttribute('aria-label'),
-                element.getAttribute('title'),
-                element.getAttribute('data-testid'),
-                element.getAttribute('href'),
-                element.textContent,
-            ]
-                .filter(Boolean)
-                .join(' ')
-                .trim()
-                .toLowerCase();
-            const shouldHide = (element) => {
-                const text = actionText(element);
-                return /\bfork\b/.test(text) || /\bgithub\b/.test(text) || text.includes('github.com');
-            };
             const hideToolbarActions = () => {
                 const toolbar = appDocument.querySelector('[data-testid="stToolbar"]');
-                if (!toolbar) return;
-
-                const actions = [...toolbar.querySelectorAll(actionSelector)]
-                    .map((element) => element.closest(actionSelector))
-                    .filter((element, index, elements) => (
-                        element && elements.indexOf(element) === index
-                    ));
-                actions
-                    .filter(shouldHide)
-                    .forEach((element) => element.style.setProperty('display', 'none', 'important'));
+                if (toolbar) toolbar.classList.add('stToolbarHiddenAction');
             };
 
             new MutationObserver(hideToolbarActions).observe(appDocument.body, {
