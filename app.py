@@ -1903,10 +1903,17 @@ st.html(
         [data-testid="stToolbar"].stToolbarHiddenAction {
             visibility: hidden !important;
         }
+        .stToolbarHiddenMenu {
+            display: none !important;
+        }
     </style>
     <script>
         (() => {
+            if (window.__siaToolbarControlsInstalled) return;
+            window.__siaToolbarControlsInstalled = true;
+
             const rootDocument = window.parent?.document || document;
+            const menuTextMarkers = /\b(system|light|dark|rerun|clear cache|print|record screen|version)\b/i;
             const hideToolbarActions = () => {
                 const toolbar = rootDocument.querySelector('[data-testid="stToolbar"]');
                 if (!toolbar) return;
@@ -1940,11 +1947,35 @@ st.html(
                     .forEach((element) => element.classList.add('stToolbarHiddenActionRoot'));
             };
 
-            new MutationObserver(hideToolbarActions).observe(rootDocument.body, {
+            const hideMainMenu = () => {
+                const candidates = [
+                    ...rootDocument.querySelectorAll(
+                        '[data-testid*="MainMenu"], [data-testid*="mainMenu"], [role="menu"]',
+                    ),
+                ];
+                candidates.forEach((candidate) => {
+                    const testId = (candidate.getAttribute('data-testid') || '').toLowerCase();
+                    const isNamedMainMenu = testId.includes('mainmenu');
+                    const isRecognizedMenu = isNamedMainMenu || (
+                        candidate.matches('[role="menu"]') && menuTextMarkers.test(candidate.textContent || '')
+                    );
+                    if (!isRecognizedMenu) return;
+
+                    const popover = candidate.closest('[data-baseweb="popover"], [data-testid*="Popover"]');
+                    (popover || candidate).classList.add('stToolbarHiddenMenu');
+                });
+            };
+
+            const hideStreamlitControls = () => {
+                hideToolbarActions();
+                hideMainMenu();
+            };
+
+            new MutationObserver(hideStreamlitControls).observe(rootDocument.body, {
                 childList: true,
                 subtree: true,
             });
-            hideToolbarActions();
+            hideStreamlitControls();
         })();
 
         (() => {
