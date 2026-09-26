@@ -1897,13 +1897,10 @@ st.set_page_config(page_title="Brigade School Intelligent Agent", page_icon=str(
 st.html(
     """
     <style>
-        .stToolbarHiddenActionRoot {
+        .stToolbarHiddenMenu {
             display: none !important;
         }
-        [data-testid="stToolbar"].stToolbarHiddenAction {
-            visibility: hidden !important;
-        }
-        .stToolbarHiddenMenu {
+        .stToolbarHiddenAction {
             display: none !important;
         }
     </style>
@@ -1936,12 +1933,13 @@ st.html(
                 .join(' ')
                 .trim()
                 .toLowerCase();
-            const isMainMenuTrigger = (element) => {
+            const isUnwantedToolbarAction = (element) => {
                 const text = accessibilityText(element);
+                const githubLink = [element, ...element.querySelectorAll('[href]')]
+                    .some((node) => (node.getAttribute('href') || '').toLowerCase().includes('github.com'));
                 return (
-                    /\bmain[ \t]*menu\b|\boverflow\b|\bmore options\b/.test(text) ||
-                    /\bmenu\b/.test(element.getAttribute('data-testid') || '') ||
-                    element.matches('[data-testid="stMainMenuButton"]')
+                    githubLink ||
+                    /\b(share|edit|favorite|favourite|star|github|fork)\b/.test(text)
                 );
             };
             const hideToolbarActions = (doc) => {
@@ -1950,17 +1948,13 @@ st.html(
                         ...toolbar.querySelectorAll('[data-testid="stToolbarActionButton"]'),
                         ...toolbar.querySelectorAll('[data-testid="stToolbarAction"]'),
                     ];
-                    const candidates = actionRoots.length
+                    const actions = actionRoots.length
                         ? actionRoots
                         : [...toolbar.querySelectorAll('button, a, [role="button"]')]
                             .filter((element) => !element.parentElement.closest('button, a, [role="button"]'));
-                    candidates.forEach((element) => {
-                        element.classList.remove('stToolbarHiddenActionRoot');
-                        element.classList.remove('stToolbarHiddenAction');
-                        if (!isMainMenuTrigger(element)) {
-                            element.classList.add('stToolbarHiddenActionRoot');
-                        }
-                    });
+                    actions
+                        .filter(isUnwantedToolbarAction)
+                        .forEach((element) => element.classList.add('stToolbarHiddenAction'));
                 });
             };
             const hideMenuContents = (doc) => {
