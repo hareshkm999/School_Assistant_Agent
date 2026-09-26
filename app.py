@@ -1670,7 +1670,11 @@ def render_table_game() -> None:
                 st.rerun()
         with col2:
             if st.button("Finish game", key="table_finish"):
-                game["active"] = False
+                clear_game_state(
+                    "table_game",
+                    "Multiplication table game started. Use the controls below.",
+                    "table_answer_",
+                )
                 st.rerun()
         return
     st.info(f"What is {game['first']} x {game['second']}?")
@@ -1795,7 +1799,11 @@ def render_periodic_game() -> None:
                 st.rerun()
         with col2:
             if st.button("Finish game", key="periodic_finish"):
-                game["active"] = False
+                clear_game_state(
+                    "periodic_game",
+                    "Periodic table game started. Use the controls below.",
+                    "periodic_answer_",
+                )
                 st.rerun()
         return
     answer = st.text_input("Your answer", key=f"periodic_answer_{game['question_number']}")
