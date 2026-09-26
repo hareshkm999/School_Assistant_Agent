@@ -2019,88 +2019,15 @@ def render_saved_turn(turn: dict) -> None:
                     st.write(item["text"])
 
 
-st.set_page_config(page_title="Brigade School Intelligent Agent", page_icon=str(LOGO_PATH), layout="wide")
+st.set_page_config(
+    page_title="Brigade School Intelligent Agent",
+    page_icon=str(LOGO_PATH),
+    layout="wide",
+    initial_sidebar_state="expanded",
+)
 st.html(
     """
-    <style>
-        .stToolbarHiddenAction {
-            display: none !important;
-        }
-    </style>
     <script>
-        (() => {
-            const observedDocuments = new WeakSet();
-            const controllerSelectors = [
-                '[data-testid="stMainMenu"]',
-                '[data-testid*="MainMenu"]',
-                'button[aria-label*="main menu" i]',
-                'button[title*="main menu" i]',
-                '[role="button"][aria-label*="main menu" i]',
-            ];
-            const getDocuments = () => {
-                const documents = [document];
-                try {
-                    if (window.parent && window.parent.document !== document) {
-                        documents.push(window.parent.document);
-                    }
-                } catch (error) {
-                    // The parent can be inaccessible when the app is embedded cross-origin.
-                }
-                return documents;
-            };
-            const isMenuContent = (element) => Boolean(
-                element.closest('[role="menu"], [data-baseweb="menu"], [data-baseweb="popover"]')
-            );
-            const findController = (toolbar) => {
-                for (const selector of controllerSelectors) {
-                    const controller = toolbar.querySelector(selector);
-                    if (controller) return controller.closest('button, a, [role="button"]') || controller;
-                }
-                return [...toolbar.querySelectorAll('button, a, [role="button"]')].find((element) => {
-                    const label = [
-                        element.getAttribute('aria-label'),
-                        element.getAttribute('title'),
-                        element.getAttribute('data-testid'),
-                    ]
-                        .filter(Boolean)
-                        .join(' ')
-                        .toLowerCase();
-                    return /\bmain\\s*menu\b/.test(label) || label.includes('stmainmenu');
-                });
-            };
-            const hideToolbarActions = (doc) => {
-                doc.querySelectorAll('[data-testid="stToolbar"]').forEach((toolbar) => {
-                    const controller = findController(toolbar);
-                    if (!controller) return;
-                    toolbar.querySelectorAll('button, a, [role="button"]').forEach((action) => {
-                        if (
-                            action === controller ||
-                            action.contains(controller) ||
-                            controller.contains(action) ||
-                            isMenuContent(action)
-                        ) {
-                            return;
-                        }
-                        action.classList.add('stToolbarHiddenAction');
-                    });
-                });
-            };
-            const updateDocument = (doc) => {
-                hideToolbarActions(doc);
-                if (!observedDocuments.has(doc) && doc.body) {
-                    new MutationObserver(() => hideToolbarActions(doc)).observe(doc.body, {
-                        childList: true,
-                        subtree: true,
-                    });
-                    observedDocuments.add(doc);
-                }
-            };
-            const updateAllDocuments = () => getDocuments().forEach(updateDocument);
-            updateAllDocuments();
-            const retryTimer = setInterval(updateAllDocuments, 500);
-            setTimeout(() => clearInterval(retryTimer), 30000);
-        })();
-
         (() => {
             let lastChatMessage = null;
 
