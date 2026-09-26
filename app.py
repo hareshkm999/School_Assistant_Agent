@@ -1699,14 +1699,14 @@ def render_table_game() -> None:
                 bonus_awarded = (
                     not game["hint_used"]
                     and elapsed is not None
-                    and 0 <= elapsed < 5
+                    and 0 <= elapsed < 10
                 )
                 if bonus_awarded:
                     game["bonus_points"] += 5
                     game["score"] += 5
                     game["feedback"] += (
                         " Lightning-fast bonus: +5 points for answering in under "
-                        "5 seconds without a hint."
+                        "10 seconds without a hint."
                     )
                 elif game["hint_used"]:
                     game["feedback"] += (
@@ -1720,7 +1720,7 @@ def render_table_game() -> None:
                 else:
                     game["feedback"] += (
                         " Lightning-fast bonus not awarded because the answer "
-                        "was not submitted in under 5 seconds."
+                        "was not submitted in under 10 seconds."
                     )
             else:
                 game["streak"] = 0
