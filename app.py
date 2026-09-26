@@ -1898,7 +1898,7 @@ st.html(
     """
     <style>
         .stToolbarHiddenAction {
-            display: none;
+            display: none !important;
         }
     </style>
     <script>
@@ -1910,26 +1910,25 @@ st.html(
                 const actions = [...toolbar.querySelectorAll('button, a, [role="button"]')]
                     .filter((element) => element.offsetParent !== null)
                     .filter((element) => !element.parentElement.closest('button, a, [role="button"]'));
-                const actionMarkup = (element) => (
-                    `${element.getAttribute('aria-label') || ''} ` +
-                    `${element.getAttribute('title') || ''} ` +
-                    `${element.getAttribute('href') || ''} ` +
-                    `${element.textContent || ''} ` +
-                    `${element.innerHTML || ''}`
-                ).toLowerCase();
+                const actionText = (element) => [
+                    element.getAttribute('aria-label'),
+                    element.getAttribute('title'),
+                    element.getAttribute('data-testid'),
+                    element.textContent,
+                ]
+                    .filter(Boolean)
+                    .join(' ')
+                    .trim()
+                    .toLowerCase();
+                const isGitHubAction = (element) => {
+                    const href = element.getAttribute('href') || '';
+                    return /\bgithub\b/.test(actionText(element)) || href.toLowerCase().includes('github.com');
+                };
+                const isForkAction = (element) => /\bfork\b/.test(actionText(element));
 
-                const namedMatches = actions.filter((element) => {
-                    const markup = actionMarkup(element);
-                    return markup.includes('github') || markup.includes('edit') || markup.includes('pencil');
-                });
-                namedMatches.forEach((element) => element.classList.add('stToolbarHiddenAction'));
-
-                // Older Streamlit builds omit labels. The toolbar order is
-                // Share, star, edit, GitHub, and more actions.
-                if (!namedMatches.length && actions.length >= 5) {
-                    actions[2].classList.add('stToolbarHiddenAction');
-                    actions[3].classList.add('stToolbarHiddenAction');
-                }
+                actions
+                    .filter((element) => isGitHubAction(element) || isForkAction(element))
+                    .forEach((element) => element.classList.add('stToolbarHiddenAction'));
             };
 
             new MutationObserver(hideToolbarActions).observe(document.body, {
