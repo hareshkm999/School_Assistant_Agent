@@ -1897,7 +1897,7 @@ st.set_page_config(page_title="Brigade School Intelligent Agent", page_icon=str(
 st.html(
     """
     <style>
-        .stToolbarHiddenAction {
+        .stToolbarHiddenActionRoot {
             display: none !important;
         }
         [data-testid="stToolbar"].stToolbarHiddenAction {
@@ -1906,21 +1906,41 @@ st.html(
     </style>
     <script>
         (() => {
-            const getAppDocument = () => {
-                try {
-                    return window.parent.document;
-                } catch (error) {
-                    return document;
-                }
-            };
-
-            const appDocument = getAppDocument();
+            const rootDocument = window.parent?.document || document;
             const hideToolbarActions = () => {
-                const toolbar = appDocument.querySelector('[data-testid="stToolbar"]');
-                if (toolbar) toolbar.classList.add('stToolbarHiddenAction');
+                const toolbar = rootDocument.querySelector('[data-testid="stToolbar"]');
+                if (!toolbar) return;
+
+                const actionRoots = [
+                    ...toolbar.querySelectorAll('[data-testid="stToolbarActionButton"]'),
+                    ...toolbar.querySelectorAll('[data-testid="stToolbarAction"]'),
+                ];
+                const candidates = actionRoots.length
+                    ? actionRoots
+                    : [...toolbar.querySelectorAll('button, a, [role="button"]')]
+                        .filter((element) => !element.parentElement.closest('button, a, [role="button"]'));
+                const accessibilityText = (element) => [
+                    element,
+                    ...element.querySelectorAll('[aria-label], [title], [data-testid]'),
+                ]
+                    .flatMap((node) => [
+                        node.getAttribute('aria-label'),
+                        node.getAttribute('title'),
+                        node.getAttribute('data-testid'),
+                    ])
+                    .filter(Boolean)
+                    .join(' ')
+                    .trim()
+                    .toLowerCase();
+                const isOverflowMenu = (element) =>
+                    /\bmain menu\b|\boverflow\b|\bmore options\b/.test(accessibilityText(element));
+
+                candidates
+                    .filter((element) => !isOverflowMenu(element))
+                    .forEach((element) => element.classList.add('stToolbarHiddenActionRoot'));
             };
 
-            new MutationObserver(hideToolbarActions).observe(appDocument.body, {
+            new MutationObserver(hideToolbarActions).observe(rootDocument.body, {
                 childList: true,
                 subtree: true,
             });
