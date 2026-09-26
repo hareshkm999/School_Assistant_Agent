@@ -1896,42 +1896,48 @@ def render_saved_turn(turn: dict) -> None:
 st.set_page_config(page_title="Brigade School Intelligent Agent", page_icon=str(LOGO_PATH), layout="wide")
 st.html(
     """
-    <style>
-        .stToolbarHiddenAction {
-            display: none !important;
-        }
-    </style>
     <script>
         (() => {
-            const hideToolbarActions = () => {
-                const toolbar = document.querySelector('[data-testid="stToolbar"]');
-                if (!toolbar) return;
-
-                const actions = [...toolbar.querySelectorAll('button, a, [role="button"]')]
-                    .filter((element) => element.offsetParent !== null)
-                    .filter((element) => !element.parentElement.closest('button, a, [role="button"]'));
-                const actionText = (element) => [
-                    element.getAttribute('aria-label'),
-                    element.getAttribute('title'),
-                    element.getAttribute('data-testid'),
-                    element.textContent,
-                ]
-                    .filter(Boolean)
-                    .join(' ')
-                    .trim()
-                    .toLowerCase();
-                const isGitHubAction = (element) => {
-                    const href = element.getAttribute('href') || '';
-                    return /\bgithub\b/.test(actionText(element)) || href.toLowerCase().includes('github.com');
-                };
-                const isForkAction = (element) => /\bfork\b/.test(actionText(element));
-
-                actions
-                    .filter((element) => isGitHubAction(element) || isForkAction(element))
-                    .forEach((element) => element.classList.add('stToolbarHiddenAction'));
+            const getAppDocument = () => {
+                try {
+                    return window.parent.document;
+                } catch (error) {
+                    return document;
+                }
             };
 
-            new MutationObserver(hideToolbarActions).observe(document.body, {
+            const appDocument = getAppDocument();
+            const actionSelector = 'button, a, [role="button"]';
+            const actionText = (element) => [
+                element.getAttribute('aria-label'),
+                element.getAttribute('title'),
+                element.getAttribute('data-testid'),
+                element.getAttribute('href'),
+                element.textContent,
+            ]
+                .filter(Boolean)
+                .join(' ')
+                .trim()
+                .toLowerCase();
+            const shouldHide = (element) => {
+                const text = actionText(element);
+                return /\bfork\b/.test(text) || /\bgithub\b/.test(text) || text.includes('github.com');
+            };
+            const hideToolbarActions = () => {
+                const toolbar = appDocument.querySelector('[data-testid="stToolbar"]');
+                if (!toolbar) return;
+
+                const actions = [...toolbar.querySelectorAll(actionSelector)]
+                    .map((element) => element.closest(actionSelector))
+                    .filter((element, index, elements) => (
+                        element && elements.indexOf(element) === index
+                    ));
+                actions
+                    .filter(shouldHide)
+                    .forEach((element) => element.style.setProperty('display', 'none', 'important'));
+            };
+
+            new MutationObserver(hideToolbarActions).observe(appDocument.body, {
                 childList: true,
                 subtree: true,
             });
