@@ -7,6 +7,7 @@ import json
 import random
 import re
 import sqlite3
+import time
 import zipfile
 from contextlib import closing
 from datetime import datetime, timezone
@@ -1637,6 +1638,7 @@ def start_table_question() -> None:
     game = st.session_state.table_game
     game["first"] = random.randint(game["minimum"], game["maximum"])
     game["second"] = random.randint(1, 10)
+    game["question_started_at"] = time.monotonic()
     game["answered"] = False
     game["hint_used"] = False
     game["feedback"] = ""
@@ -1688,10 +1690,38 @@ def render_table_game() -> None:
                 game["score"] += 10
                 game["streak"] += 1
                 game["feedback"] = f"Correct! {game['first']} x {game['second']} = {correct}."
-                if not game["hint_used"]:
+                started_at = game.get("question_started_at")
+                elapsed = (
+                    time.monotonic() - started_at
+                    if isinstance(started_at, (int, float))
+                    else None
+                )
+                bonus_awarded = (
+                    not game["hint_used"]
+                    and elapsed is not None
+                    and 0 <= elapsed < 5
+                )
+                if bonus_awarded:
                     game["bonus_points"] += 5
                     game["score"] += 5
-                    game["feedback"] += " Lightning-fast bonus: +5 points."
+                    game["feedback"] += (
+                        " Lightning-fast bonus: +5 points for answering in under "
+                        "5 seconds without a hint."
+                    )
+                elif game["hint_used"]:
+                    game["feedback"] += (
+                        " Lightning-fast bonus not awarded because a hint was used."
+                    )
+                elif elapsed is None or elapsed < 0:
+                    game["feedback"] += (
+                        " Lightning-fast bonus not awarded because the question "
+                        "timer was unavailable."
+                    )
+                else:
+                    game["feedback"] += (
+                        " Lightning-fast bonus not awarded because the answer "
+                        "was not submitted in under 5 seconds."
+                    )
             else:
                 game["streak"] = 0
                 game["feedback"] = f"Not quite. {game['first']} groups of {game['second']} make {correct}."
