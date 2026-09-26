@@ -1909,73 +1909,86 @@ st.html(
     </style>
     <script>
         (() => {
-            if (window.__siaToolbarControlsInstalled) return;
-            window.__siaToolbarControlsInstalled = true;
-
-            const rootDocument = window.parent?.document || document;
+            const observedDocuments = new WeakSet();
             const menuTextMarkers = /\b(system|light|dark|rerun|clear cache|print|record screen|version)\b/i;
-            const hideToolbarActions = () => {
-                const toolbar = rootDocument.querySelector('[data-testid="stToolbar"]');
-                if (!toolbar) return;
-
-                const actionRoots = [
-                    ...toolbar.querySelectorAll('[data-testid="stToolbarActionButton"]'),
-                    ...toolbar.querySelectorAll('[data-testid="stToolbarAction"]'),
-                ];
-                const candidates = actionRoots.length
-                    ? actionRoots
-                    : [...toolbar.querySelectorAll('button, a, [role="button"]')]
-                        .filter((element) => !element.parentElement.closest('button, a, [role="button"]'));
-                const accessibilityText = (element) => [
-                    element,
-                    ...element.querySelectorAll('[aria-label], [title], [data-testid]'),
-                ]
-                    .flatMap((node) => [
-                        node.getAttribute('aria-label'),
-                        node.getAttribute('title'),
-                        node.getAttribute('data-testid'),
-                    ])
-                    .filter(Boolean)
-                    .join(' ')
-                    .trim()
-                    .toLowerCase();
-                const isOverflowMenu = (element) =>
-                    /\bmain menu\b|\boverflow\b|\bmore options\b/.test(accessibilityText(element));
-
-                candidates
-                    .filter((element) => !isOverflowMenu(element))
-                    .forEach((element) => element.classList.add('stToolbarHiddenActionRoot'));
+            const getDocuments = () => {
+                const documents = [document];
+                try {
+                    if (window.parent && window.parent.document !== document) {
+                        documents.push(window.parent.document);
+                    }
+                } catch (error) {
+                    // The parent can be inaccessible when the app is embedded cross-origin.
+                }
+                return documents;
             };
-
-            const hideMainMenu = () => {
-                const candidates = [
-                    ...rootDocument.querySelectorAll(
-                        '[data-testid*="MainMenu"], [data-testid*="mainMenu"], [role="menu"]',
-                    ),
-                ];
-                candidates.forEach((candidate) => {
-                    const testId = (candidate.getAttribute('data-testid') || '').toLowerCase();
-                    const isNamedMainMenu = testId.includes('mainmenu');
-                    const isRecognizedMenu = isNamedMainMenu || (
-                        candidate.matches('[role="menu"]') && menuTextMarkers.test(candidate.textContent || '')
-                    );
-                    if (!isRecognizedMenu) return;
-
-                    const popover = candidate.closest('[data-baseweb="popover"], [data-testid*="Popover"]');
-                    (popover || candidate).classList.add('stToolbarHiddenMenu');
+            const accessibilityText = (element) => [
+                element,
+                ...element.querySelectorAll('[aria-label], [title], [data-testid]'),
+            ]
+                .flatMap((node) => [
+                    node.getAttribute('aria-label'),
+                    node.getAttribute('title'),
+                    node.getAttribute('data-testid'),
+                    node.textContent,
+                ])
+                .filter(Boolean)
+                .join(' ')
+                .trim()
+                .toLowerCase();
+            const isMainMenuTrigger = (element) => {
+                const text = accessibilityText(element);
+                return (
+                    /\bmain[ \t]*menu\b|\boverflow\b|\bmore options\b/.test(text) ||
+                    /\bmenu\b/.test(element.getAttribute('data-testid') || '') ||
+                    element.matches('[data-testid="stMainMenuButton"]')
+                );
+            };
+            const hideToolbarActions = (doc) => {
+                doc.querySelectorAll('[data-testid="stToolbar"]').forEach((toolbar) => {
+                    const actionRoots = [
+                        ...toolbar.querySelectorAll('[data-testid="stToolbarActionButton"]'),
+                        ...toolbar.querySelectorAll('[data-testid="stToolbarAction"]'),
+                    ];
+                    const candidates = actionRoots.length
+                        ? actionRoots
+                        : [...toolbar.querySelectorAll('button, a, [role="button"]')]
+                            .filter((element) => !element.parentElement.closest('button, a, [role="button"]'));
+                    candidates.forEach((element) => {
+                        element.classList.remove('stToolbarHiddenActionRoot');
+                        element.classList.remove('stToolbarHiddenAction');
+                        if (!isMainMenuTrigger(element)) {
+                            element.classList.add('stToolbarHiddenActionRoot');
+                        }
+                    });
                 });
             };
-
-            const hideStreamlitControls = () => {
-                hideToolbarActions();
-                hideMainMenu();
+            const hideMenuContents = (doc) => {
+                doc.querySelectorAll(
+                    '[data-testid*="MainMenu"], [data-testid*="mainMenu"], [role="menu"], [data-baseweb="menu"]'
+                ).forEach((menu) => {
+                    const testId = (menu.getAttribute('data-testid') || '').toLowerCase();
+                    const isRecognizedMenu = testId.includes('mainmenu') ||
+                        (menu.matches('[role="menu"]') && menuTextMarkers.test(menu.textContent || ''));
+                    if (!isRecognizedMenu || menu.closest('[data-testid="stToolbar"]')) return;
+                    const popover = menu.closest('[data-baseweb="popover"], [data-testid*="Popover"]');
+                    (popover || menu).classList.add('stToolbarHiddenMenu');
+                });
             };
-
-            new MutationObserver(hideStreamlitControls).observe(rootDocument.body, {
-                childList: true,
-                subtree: true,
-            });
-            hideStreamlitControls();
+            const updateDocument = (doc) => {
+                hideToolbarActions(doc);
+                hideMenuContents(doc);
+                if (!observedDocuments.has(doc) && doc.body) {
+                    new MutationObserver(() => {
+                        hideToolbarActions(doc);
+                        hideMenuContents(doc);
+                    }).observe(doc.body, { childList: true, subtree: true });
+                    observedDocuments.add(doc);
+                }
+            };
+            const updateAllDocuments = () => getDocuments().forEach(updateDocument);
+            updateAllDocuments();
+            setTimeout(updateAllDocuments, 250);
         })();
 
         (() => {
