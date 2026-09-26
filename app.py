@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import random
 import re
 import sqlite3
 import zipfile
@@ -1420,6 +1421,399 @@ def clear_library() -> None:
         pass
 
 
+def learning_cards() -> list[dict]:
+    """Build local study cards from indexed passages for the learning suite."""
+    collection = get_collection()
+    if collection.count() == 0:
+        return [
+            {
+                "q": "What is the purpose of active recall?",
+                "a": "It asks you to retrieve information from memory instead of only rereading it.",
+                "cat": "Study skills",
+            },
+            {
+                "q": "What does spaced repetition help reduce?",
+                "a": "It helps reduce forgetting by reviewing material at increasing intervals.",
+                "cat": "Study skills",
+            },
+            {
+                "q": "What is interleaving?",
+                "a": "It is mixing different topics or problem types during one study session.",
+                "cat": "Study skills",
+            },
+        ]
+
+    data = collection.get(include=["documents", "metadatas"])
+    cards = []
+    seen = set()
+    for document, metadata in zip(data.get("documents", []), data.get("metadatas", [])):
+        text = re.sub(r"\s+", " ", document).strip()
+        if len(text) < 80:
+            continue
+        answer = text[:420].rstrip()
+        identity = answer.lower()
+        if identity in seen:
+            continue
+        seen.add(identity)
+        source = str((metadata or {}).get("source", "Study material"))
+        cards.append(
+            {
+                "q": f"What does this passage explain from {Path(source).stem}?",
+                "a": answer,
+                "cat": Path(source).stem,
+            }
+        )
+        if len(cards) >= 12:
+            break
+    return cards
+
+
+def render_learning_suite() -> None:
+    """Render the three interactive learning engines from learning_suite.py."""
+    mode = st.session_state.get("learning_mode")
+    if not mode:
+        return
+
+    cards = learning_cards()
+    if st.session_state.get("learning_cards_signature") != len(cards):
+        st.session_state.learning_cards = cards
+        st.session_state.learning_cards_signature = len(cards)
+        st.session_state.leitner_boxes = {1: list(range(len(cards))), 2: [], 3: []}
+        st.session_state.learning_card_index = 0
+        st.session_state.learning_revealed = False
+        st.session_state.drill_items = []
+
+    st.divider()
+    st.subheader(
+        {
+            "leitner": "Spaced repetition — Leitner boxes",
+            "interleaved": "Interleaved practice drill",
+            "blurting": "Active recall — blurting workspace",
+        }[mode]
+    )
+    if st.button("Close learning suite", key="close_learning_suite"):
+        st.session_state.learning_mode = None
+        st.rerun()
+
+    if mode == "leitner":
+        boxes = st.session_state.leitner_boxes
+        st.caption(
+            f"Box 1: {len(boxes[1])} cards · Box 2: {len(boxes[2])} cards · "
+            f"Box 3: {len(boxes[3])} cards"
+        )
+        available_boxes = [number for number in (1, 2, 3) if boxes[number]]
+        if not available_boxes:
+            st.success("All cards are currently mastered.")
+            return
+        selected_box = st.selectbox(
+            "Choose a box to review",
+            available_boxes,
+            format_func=lambda number: {
+                1: "Box 1 — review every day",
+                2: "Box 2 — review every 3 days",
+                3: "Box 3 — review every 5 days",
+            }[number],
+            key="leitner_selected_box",
+        )
+        if st.session_state.get("leitner_active_box") != selected_box:
+            st.session_state.leitner_active_box = selected_box
+            st.session_state.leitner_active_position = 0
+            st.session_state.learning_revealed = False
+        box_cards = boxes[selected_box]
+        position = min(st.session_state.leitner_active_position, len(box_cards) - 1)
+        card = st.session_state.learning_cards[box_cards[position]]
+        st.info(card["q"])
+        if st.session_state.learning_revealed:
+            st.success(card["a"])
+            response = st.radio(
+                "Did you get it right?",
+                ["Yes, I got it right", "No, I need more practice"],
+                key=f"leitner_result_{selected_box}_{position}",
+            )
+            if st.button("Save result", key=f"leitner_save_{selected_box}_{position}"):
+                boxes[selected_box].remove(box_cards[position])
+                destination = min(selected_box + 1, 3) if response.startswith("Yes") else 1
+                boxes[destination].append(box_cards[position])
+                st.session_state.learning_revealed = False
+                st.session_state.leitner_active_position = 0
+                st.rerun()
+        elif st.button("Show answer", key=f"leitner_show_{selected_box}_{position}"):
+            st.session_state.learning_revealed = True
+            st.rerun()
+
+    elif mode == "interleaved":
+        if not st.session_state.drill_items:
+            st.session_state.drill_items = random.sample(
+                st.session_state.learning_cards,
+                k=min(5, len(st.session_state.learning_cards)),
+            )
+            st.session_state.drill_position = 0
+            st.session_state.drill_score = 0
+        items = st.session_state.drill_items
+        position = st.session_state.drill_position
+        if position >= len(items):
+            st.success(f"Drill complete — score: {st.session_state.drill_score} / {len(items) * 10}")
+            if st.button("Start another drill", key="restart_drill"):
+                st.session_state.drill_items = []
+                st.rerun()
+            return
+        item = items[position]
+        st.caption(f"Context switch {position + 1} of {len(items)} · Topic: {item['cat']}")
+        st.info(item["q"])
+        answer = st.text_input("Your answer", key=f"drill_answer_{position}")
+        if st.button("Check answer", key=f"drill_check_{position}"):
+            if answer.strip() and answer.strip().lower() in item["a"].lower():
+                st.success("Correct — excellent cognitive flexibility.")
+                st.session_state.drill_score += 10
+            else:
+                st.warning(f"Review this answer: {item['a']}")
+            st.session_state.drill_position += 1
+            st.rerun()
+
+    else:
+        if "blurting_card" not in st.session_state:
+            st.session_state.blurting_card = random.choice(cards)
+        card = st.session_state.blurting_card
+        if not st.session_state.get("blurting_started"):
+            st.info("Study the passage for a short time, then hide it and write everything you remember.")
+            st.markdown(card["a"])
+            if st.button("Hide passage and start recall", key="start_blurting"):
+                st.session_state.blurting_started = True
+                st.rerun()
+        else:
+            response = st.text_area(
+                "Write everything you remember",
+                height=180,
+                key="blurting_response",
+            )
+            if st.button("Compare with source", key="compare_blurting"):
+                st.markdown("**Original material**")
+                st.info(card["a"])
+                st.markdown("**Your active recall**")
+                st.write(response or "No response entered.")
+                st.caption("Look for important ideas you missed or details you remembered incorrectly.")
+            if st.button("Try another passage", key="new_blurting"):
+                st.session_state.blurting_card = random.choice(cards)
+                st.session_state.blurting_started = False
+                st.session_state.pop("blurting_response", None)
+                st.rerun()
+
+
+def is_table_game_request(question: str) -> bool:
+    normalized = re.sub(r"[^a-z0-9]+", " ", question.casefold()).strip()
+    return bool(
+        re.search(r"\b(?:multiplication|times)\s+(?:table|tables|game|practice)\b", normalized)
+        or re.search(r"\b(?:math|multiplication)\s+table\s+game\b", normalized)
+        or re.search(r"\bpractice\s+(?:the\s+)?(?:multiplication\s+)?tables?\b", normalized)
+    )
+
+
+def initialize_table_game(question: str) -> None:
+    normalized = question.lower()
+    if re.search(r"\b(?:hard|6\s*(?:to|-|through)\s*12)\b", normalized):
+        minimum, maximum = 6, 12
+    elif re.search(r"\b(?:easy|1\s*(?:to|-|through)\s*5)\b", normalized):
+        minimum, maximum = 1, 5
+    else:
+        minimum, maximum = 1, 10
+    st.session_state.table_game = {"minimum": minimum, "maximum": maximum, "score": 0, "streak": 0, "attempted": 0, "bonus_points": 0, "active": True}
+    start_table_question()
+
+
+def start_table_question() -> None:
+    game = st.session_state.table_game
+    game["first"] = random.randint(game["minimum"], game["maximum"])
+    game["second"] = random.randint(1, 10)
+    game["answered"] = False
+    game["hint_used"] = False
+    game["feedback"] = ""
+    game["question_number"] = game.get("question_number", 0) + 1
+
+
+def render_table_game() -> None:
+    game = st.session_state.get("table_game")
+    if not game or game.get("dismissed"):
+        return
+    if not game.get("active"):
+        if game.get("attempted", 0):
+            st.divider()
+            st.subheader("Multiplication game results")
+            st.success(f"Final score: {game['score']} points across {game['attempted']} question(s).")
+            st.caption(f"Best streak: {game['streak']} · Bonus points: {game['bonus_points']}")
+        return
+    st.divider()
+    st.subheader("Multiplication tables practice")
+    st.caption(f"Level: {game['minimum']} to {game['maximum']} · Question {game.get('question_number', 1)} · Score: {game['score']} · Streak: {game['streak']}")
+    if game.get("feedback"):
+        if game["feedback"].startswith("Correct"):
+            st.success(game["feedback"])
+        else:
+            st.warning(game["feedback"])
+    if game.get("answered"):
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("Next question", key="table_next"):
+                start_table_question()
+                st.rerun()
+        with col2:
+            if st.button("Finish game", key="table_finish"):
+                game["active"] = False
+                st.rerun()
+        return
+    st.info(f"What is {game['first']} x {game['second']}?")
+    answer = st.number_input("Your answer", min_value=0, step=1, key=f"table_answer_{game['question_number']}")
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        if st.button("Check answer", key="table_check"):
+            correct = game["first"] * game["second"]
+            game["attempted"] += 1
+            if answer == correct:
+                game["score"] += 10
+                game["streak"] += 1
+                game["feedback"] = f"Correct! {game['first']} x {game['second']} = {correct}."
+                if not game["hint_used"]:
+                    game["bonus_points"] += 5
+                    game["score"] += 5
+                    game["feedback"] += " Lightning-fast bonus: +5 points."
+            else:
+                game["streak"] = 0
+                game["feedback"] = f"Not quite. {game['first']} groups of {game['second']} make {correct}."
+            game["answered"] = True
+            st.rerun()
+    with col2:
+        if st.button("Hint", key="table_hint"):
+            game["hint_used"] = True
+            st.info(f"Think of {game['first']} rows with {game['second']} items in each row, or add {game['second']} {game['first']} times.")
+    with col3:
+        if st.button("Exit game", key="table_exit"):
+            game["dismissed"] = True
+            game["active"] = False
+            st.session_state.pop("table_game", None)
+            st.rerun()
+
+PERIODIC_TABLE_ELEMENTS = {
+    1: ("Hydrogen", "H"), 2: ("Helium", "He"), 3: ("Lithium", "Li"),
+    4: ("Beryllium", "Be"), 5: ("Boron", "B"), 6: ("Carbon", "C"),
+    7: ("Nitrogen", "N"), 8: ("Oxygen", "O"), 9: ("Fluorine", "F"),
+    10: ("Neon", "Ne"), 11: ("Sodium", "Na"), 12: ("Magnesium", "Mg"),
+    13: ("Aluminium", "Al"), 14: ("Silicon", "Si"), 15: ("Phosphorus", "P"),
+    16: ("Sulfur", "S"), 17: ("Chlorine", "Cl"), 18: ("Argon", "Ar"),
+    19: ("Potassium", "K"), 20: ("Calcium", "Ca"),
+}
+
+
+def is_periodic_game_request(question: str) -> bool:
+    normalized = re.sub(r"[^a-z0-9]+", " ", question.casefold()).strip()
+    return bool(
+        re.search(r"\bperiodic\s+table\s+(?:game|quiz|practice)\b", normalized)
+        or re.search(r"\b(?:game|quiz|practice)\s+(?:about|on|with|for)?\s*periodic\s+table\b", normalized)
+        or re.search(r"\b(?:periodic\s+)?elements?\s+(?:game|quiz|practice)\b", normalized)
+        or re.search(r"\bpractice\s+(?:the\s+)?(?:periodic\s+)?elements?\b", normalized)
+        or re.search(r"\bchemistry\s+elements?\s+(?:game|quiz|practice)\b", normalized)
+    )
+
+
+def initialize_periodic_game(question: str) -> None:
+    normalized = question.lower()
+    if "symbol" in normalized:
+        mode = "symbol"
+    elif "atomic number" in normalized or "atomic no" in normalized:
+        mode = "number"
+    elif "element name" in normalized or "name" in normalized:
+        mode = "name"
+    else:
+        mode = "mixed"
+    st.session_state.periodic_game = {
+        "mode": mode, "score": 0, "attempted": 0, "correct": 0,
+        "active": True, "question_number": 0,
+    }
+    start_periodic_question()
+
+
+def start_periodic_question() -> None:
+    game = st.session_state.periodic_game
+    atomic_number = random.choice(list(PERIODIC_TABLE_ELEMENTS))
+    name, symbol = PERIODIC_TABLE_ELEMENTS[atomic_number]
+    question_type = game["mode"] if game["mode"] != "mixed" else random.choice(("symbol", "name", "number"))
+    game.update({
+        "atomic_number": atomic_number, "name": name, "symbol": symbol,
+        "question_type": question_type, "answered": False, "hint_used": False,
+        "feedback": "", "question_number": game.get("question_number", 0) + 1,
+    })
+
+
+def render_periodic_game() -> None:
+    game = st.session_state.get("periodic_game")
+    if not game or game.get("dismissed"):
+        return
+    if not game.get("active"):
+        if game.get("attempted", 0):
+            st.divider()
+            st.subheader("Periodic table game results")
+            st.success(f"Final score: {game['score']} points · {game['correct']} / {game['attempted']} correct")
+        return
+    st.divider()
+    st.subheader("Periodic table recall practice")
+    mode_label = {"symbol": "Guess the symbol", "name": "Guess the element name", "number": "Guess the atomic number", "mixed": "Mixed challenge"}[game["mode"]]
+    st.caption(f"Mode: {mode_label} · Question {game['question_number']} · Score: {game['score']}")
+    if game.get("feedback"):
+        if game["feedback"].startswith("Correct"):
+            st.success(game["feedback"])
+        else:
+            st.warning(game["feedback"])
+    question_type = game["question_type"]
+    if question_type == "symbol":
+        prompt = f"What is the chemical symbol for {game['name']} (atomic number {game['atomic_number']})?"
+        correct_answer = game["symbol"]
+    elif question_type == "name":
+        prompt = f"What is the element name for the symbol {game['symbol']} (atomic number {game['atomic_number']})?"
+        correct_answer = game["name"]
+    else:
+        prompt = f"What is the atomic number of {game['name']} (symbol {game['symbol']})?"
+        correct_answer = str(game["atomic_number"])
+    st.info(prompt)
+    if game.get("answered"):
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("Next element", key="periodic_next"):
+                start_periodic_question()
+                st.rerun()
+        with col2:
+            if st.button("Finish game", key="periodic_finish"):
+                game["active"] = False
+                st.rerun()
+        return
+    answer = st.text_input("Your answer", key=f"periodic_answer_{game['question_number']}")
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        if st.button("Check answer", key="periodic_check"):
+            game["attempted"] += 1
+            is_correct = answer.strip() == correct_answer if question_type in ("symbol", "number") else answer.strip().lower() == correct_answer.lower()
+            if is_correct:
+                game["score"] += 10
+                game["correct"] += 1
+                game["feedback"] = f"Correct! {correct_answer} is right."
+            else:
+                game["feedback"] = f"Not quite. The correct answer is {correct_answer}. Atomic number: {game['atomic_number']} · Symbol: {game['symbol']}."
+            game["answered"] = True
+            st.rerun()
+    with col2:
+        if st.button("Hint", key="periodic_hint"):
+            game["hint_used"] = True
+            if question_type == "symbol":
+                st.info(f"Hint: the element name is {game['name']}.")
+            elif question_type == "name":
+                st.info(f"Hint: its chemical symbol is {game['symbol']}.")
+            else:
+                period = 1 if game["atomic_number"] <= 2 else 2 if game["atomic_number"] <= 10 else 3
+                st.info(f"Hint: {game['name']} is in Period {period}.")
+    with col3:
+        if st.button("Exit game", key="periodic_exit"):
+            game["dismissed"] = True
+            game["active"] = False
+            st.session_state.pop("periodic_game", None)
+            st.rerun()
+
 def render_saved_turn(turn: dict) -> None:
     """Render conversation state retained for this browser session."""
     with st.chat_message("user"):
@@ -1541,6 +1935,19 @@ with st.sidebar:
         st.rerun()
     if st.button("Clear document library"):
         clear_library()
+        st.rerun()
+    st.divider()
+    st.header("Learning suite")
+    st.caption("Practice with indexed school material using three evidence-based study modes.")
+    if st.button("Spaced repetition", key="open_leitner"):
+        st.session_state.learning_mode = "leitner"
+        st.rerun()
+    if st.button("Interleaved practice", key="open_interleaved"):
+        st.session_state.learning_mode = "interleaved"
+        st.rerun()
+    if st.button("Active recall blurting", key="open_blurting"):
+        st.session_state.learning_mode = "blurting"
+        st.session_state.blurting_started = False
         st.rerun()
     st.divider()
     st.header("Marks analytics")
@@ -1674,6 +2081,14 @@ if question:
                     "response_key": response_key,
                 }
             )
+        elif is_table_game_request(question):
+            initialize_table_game(question)
+            st.session_state.chat_history.append({"question": question, "answer": "Multiplication table game started. Use the controls below."})
+            st.rerun()
+        elif is_periodic_game_request(question):
+            initialize_periodic_game(question)
+            st.session_state.chat_history.append({"question": question, "answer": "Periodic table game started. Use the controls below."})
+            st.rerun()
         elif normalized_question in {
             "who are you", "what are you", "tell me about yourself", "tell me about sia", "what is sia",
             "who created you", "who made you", "who developed you", "who is your creator", "who built you",
@@ -1742,3 +2157,7 @@ if question:
                         "quiz": quiz_request,
                     }
                 )
+
+render_learning_suite()
+render_table_game()
+render_periodic_game()
