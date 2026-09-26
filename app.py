@@ -1434,6 +1434,7 @@ def render_saved_turn(turn: dict) -> None:
                 turn["puter_prompt"],
                 turn["response_key"],
                 flashcards=turn.get("flashcards", False),
+                quiz=turn.get("quiz", False),
             )
         elif turn.get("sources"):
             st.info("Sia answered this question using the saved document sources below. Ask a follow-up to continue the discussion.")
