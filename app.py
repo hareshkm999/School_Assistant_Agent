@@ -1062,7 +1062,7 @@ def show_puter_answer(prompt: str, response_key: str, flashcards: bool = False, 
           function resizeFrame() {{
             const status = document.getElementById('status');
             const answer = document.getElementById('answer');
-            const contentHeight = (status ? status.scrollHeight : 0) + answer.scrollHeight + 42;
+            const contentHeight = (status ? status.scrollHeight : 0) + (answer ? answer.scrollHeight : 0) + 42;
             const height = Math.min(MAX_FRAME_HEIGHT, Math.max(MIN_FRAME_HEIGHT, contentHeight));
             const message = {{
               isStreamlitMessage: true,
@@ -1073,7 +1073,25 @@ def show_puter_answer(prompt: str, response_key: str, flashcards: bool = False, 
             if (window.top !== window.parent) window.top.postMessage(message, '*');
           }}
 
-          new ResizeObserver(resizeFrame).observe(document.getElementById('answer'));
+          function removeGameFrame() {{
+            const frame = window.frameElement;
+            if (frame) {{
+              frame.style.display = 'none';
+              frame.setAttribute('aria-hidden', 'true');
+            }}
+            answerObserver.disconnect();
+            document.body.replaceChildren();
+            const message = {{
+              isStreamlitMessage: true,
+              type: 'streamlit:setFrameHeight',
+              height: 0,
+            }};
+            window.parent.postMessage(message, '*');
+            if (window.top !== window.parent) window.top.postMessage(message, '*');
+          }}
+
+          const answerObserver = new ResizeObserver(resizeFrame);
+          answerObserver.observe(document.getElementById('answer'));
           const startupWatchdog = window.setTimeout(() => {{
             const status = document.getElementById('status');
             if (status && status.textContent.includes('connecting')) {{
@@ -1200,24 +1218,7 @@ def show_puter_answer(prompt: str, response_key: str, flashcards: bool = False, 
               const container = document.getElementById('quiz-deck');
               if (!container) return;
               if (finished) {{
-                const score = getScore();
-                const total = validQuestions.length;
-                const percentage = Math.round((score / total) * 100);
-                const summaryRows = validQuestions.map((question, questionIndex) => {{
-                  const chosen = answers[questionIndex];
-                  const selectedLetter = chosen === null ? 'Not answered' : String.fromCharCode(65 + chosen);
-                  const isCorrect = chosen === question.answerIndex;
-                  const status = isCorrect ? '✅ Correct' : '❌ Incorrect';
-                  return `<div style="margin-top: 0.5rem; font-size: 0.95rem;">${{questionIndex + 1}}. ${{status}} — your choice: ${{selectedLetter}}.</div>`;
-                }}).join('');
-                container.innerHTML = `
-                  <div class="quiz-box">
-                    <h3>Quiz Result</h3>
-                    <p><strong>${{score}} / ${{total}}</strong> correct (${{percentage}}%)</p>
-                    ${{summaryRows}}
-                  </div>
-                `;
-                resizeFrame();
+                removeGameFrame();
                 return;
               }}
               const quizQuestion = validQuestions[index];
