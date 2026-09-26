@@ -1620,6 +1620,19 @@ def initialize_table_game(question: str) -> None:
     start_table_question()
 
 
+def clear_game_state(state_key: str, start_message: str, widget_prefix: str) -> None:
+    """Remove a game and its chat/widget state before rerunning the app."""
+    st.session_state.pop(state_key, None)
+    st.session_state.chat_history = [
+        turn
+        for turn in st.session_state.chat_history
+        if turn.get("answer") != start_message
+    ]
+    for key in list(st.session_state):
+        if key.startswith(widget_prefix):
+            st.session_state.pop(key, None)
+
+
 def start_table_question() -> None:
     game = st.session_state.table_game
     game["first"] = random.randint(game["minimum"], game["maximum"])
@@ -1686,9 +1699,11 @@ def render_table_game() -> None:
             st.info(f"Think of {game['first']} rows with {game['second']} items in each row, or add {game['second']} {game['first']} times.")
     with col3:
         if st.button("Exit game", key="table_exit"):
-            game["dismissed"] = True
-            game["active"] = False
-            st.session_state.pop("table_game", None)
+            clear_game_state(
+                "table_game",
+                "Multiplication table game started. Use the controls below.",
+                "table_answer_",
+            )
             st.rerun()
 
 PERIODIC_TABLE_ELEMENTS = {
@@ -1809,9 +1824,11 @@ def render_periodic_game() -> None:
                 st.info(f"Hint: {game['name']} is in Period {period}.")
     with col3:
         if st.button("Exit game", key="periodic_exit"):
-            game["dismissed"] = True
-            game["active"] = False
-            st.session_state.pop("periodic_game", None)
+            clear_game_state(
+                "periodic_game",
+                "Periodic table game started. Use the controls below.",
+                "periodic_answer_",
+            )
             st.rerun()
 
 def render_saved_turn(turn: dict) -> None:
